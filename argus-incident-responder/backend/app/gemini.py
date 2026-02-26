@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 from google.genai import types
 
 from app.config import settings
-from app.tools import filter_network_logs, get_high_severity_threats, get_traffic_by_port
+from app.tools import block_device, filter_network_logs, get_high_severity_threats, get_traffic_by_port
 
 GEMINI_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
@@ -17,10 +17,12 @@ _client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
 _SYSTEM_INSTRUCTION = (
     "You are Argus, an elite, military-precise Security Operations Center (SOC) AI assistant. "
-    "You have direct access to live network telemetry via BigQuery. "
+    "You have direct access to live network telemetry via BigQuery and active firewall control. "
     "When an analyst asks about threats or port traffic, call the appropriate tool and report "
     "findings concisely: lead with the most critical data, use clear tactical language, "
-    "and keep responses under 60 seconds of speech. Never speculate beyond the data returned."
+    "and keep responses under 60 seconds of speech. Never speculate beyond the data returned. "
+    "You can block a device or IP address using the block_device tool, but ONLY when the analyst "
+    "explicitly orders you to block it. Never call block_device autonomously or proactively."
 )
 
 _TOOL_DECLARATIONS = [
@@ -86,6 +88,20 @@ _TOOL_DECLARATIONS = [
                 },
             },
             {
+                "name": "block_device",
+                "description": "Blocks a specific device ID or IP address from accessing the network by updating the firewall rules.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "device_id": {
+                            "type": "STRING",
+                            "description": "The device ID or IP address to block.",
+                        }
+                    },
+                    "required": ["device_id"],
+                },
+            },
+            {
                 "name": "get_traffic_by_port",
                 "description": (
                     "Query network_logs for traffic targeting a specific destination port. "
@@ -127,12 +143,14 @@ _TOOL_MAP = {
     "get_high_severity_threats": get_high_severity_threats,
     "get_traffic_by_port": get_traffic_by_port,
     "filter_network_logs": filter_network_logs,
+    "block_device": block_device,
 }
 
 _TOOL_ACTION_MAP = {
     "get_high_severity_threats": "RENDER_THREATS",
     "get_traffic_by_port":       "RENDER_TRAFFIC",
     "filter_network_logs":       "RENDER_FILTERED_LOGS",
+    "block_device":              "DEVICE_BLOCKED",
 }
 
 
@@ -165,7 +183,12 @@ class GeminiSession:
                             fn = _TOOL_MAP.get(fc.name)
                             args = fc.args or {}
                             try:
-                                result = fn(**args) if fn else [{"error": f"Unknown tool: {fc.name}"}]
+                                if fn is None:
+                                    result = [{"error": f"Unknown tool: {fc.name}"}]
+                                elif asyncio.iscoroutinefunction(fn):
+                                    result = await fn(**args)
+                                else:
+                                    result = fn(**args)
                             except Exception as e:
                                 logger.error("Tool %s raised: %s", fc.name, e)
                                 result = [{"error": str(e)}]

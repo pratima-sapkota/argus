@@ -13,3 +13,8 @@ class _Settings:
 
 
 settings = _Settings()
+
+from google.cloud import firestore  # noqa: E402
+db: firestore.AsyncClient = firestore.AsyncClient(
+    project=settings.GOOGLE_CLOUD_PROJECT
+)

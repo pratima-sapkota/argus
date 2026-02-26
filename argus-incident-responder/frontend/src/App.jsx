@@ -1,7 +1,9 @@
 import { useRef, useCallback, useState } from 'react'
 import { useAudio } from './hooks/useAudio'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useActiveConnections } from './hooks/useActiveConnections'
 import { NetworkTable } from './components/NetworkTable'
+import { DeviceCard } from './components/DeviceCard'
 
 export default function App() {
   const [active, setActive] = useState(false)
@@ -64,6 +66,8 @@ export default function App() {
       setActive(false)
     }
   }
+
+  const connections = useActiveConnections()
 
   const hasData = threats.length > 0 || traffic.length > 0 || filteredLogs.length > 0
 
@@ -147,6 +151,20 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Active Connections panel */}
+      {connections.length > 0 && (
+        <div className="w-full max-w-4xl mt-4">
+          <h2 className="text-cyan-400 text-xs font-semibold uppercase tracking-widest mb-3">
+            Active Connections
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {connections.map((c) => (
+              <DeviceCard key={c.id} {...c} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

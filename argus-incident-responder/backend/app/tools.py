@@ -1,9 +1,15 @@
 """BigQuery tool functions exposed to Gemini via function calling."""
 
 import datetime
+import logging
 
 from google.cloud import bigquery
 from google.cloud import exceptions as gcp_exceptions
+
+from app.config import db
+from app.state import blocked_ids
+
+logger = logging.getLogger(__name__)
 
 _bq_client = bigquery.Client()
 
@@ -127,6 +133,18 @@ def filter_network_logs(
         result = _bq_client.query(query, job_config=job_config).result()
         return [_serialize_row(dict(row)) for row in result]
     except gcp_exceptions.GoogleCloudError as e:
+        return [{"error": str(e)}]
+
+
+async def block_device(device_id: str) -> list[dict]:
+    """Blocks a specific device ID or IP address from accessing the network by updating the firewall rules."""
+    try:
+        doc_ref = db.collection("active_connections").document(device_id)
+        await doc_ref.set({"status": "BLOCKED"}, merge=True)
+        blocked_ids.add(device_id)
+        return [{"blocked": device_id}]
+    except Exception as e:
+        logger.error("block_device failed for %s: %s", device_id, e)
         return [{"error": str(e)}]
 
 

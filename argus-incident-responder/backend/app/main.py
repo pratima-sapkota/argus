@@ -1,11 +1,16 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from google.cloud.firestore_v1 import Increment
 
+from app.config import db
 from app.gemini import GeminiSession
+from app.state import blocked_ids
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,10 +25,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_EXEMPT_PATHS = {"/health", "/simulate-traffic", "/docs", "/openapi.json"}
+
+
+@app.middleware("http")
+async def firewall_middleware(request: Request, call_next):
+    if request.scope.get("type") == "websocket":
+        return await call_next(request)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.url.path in _EXEMPT_PATHS:
+        return await call_next(request)
+    device_id = request.query_params.get("device_id") or request.client.host
+    if device_id in blocked_ids:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Access Denied by Project Argus Firewall"},
+        )
+    return await call_next(request)
+
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/simulate-traffic")
+async def simulate_traffic(request: Request, device_id: str | None = None):
+    resolved_id = device_id or request.client.host
+    doc_ref = db.collection("active_connections").document(resolved_id)
+    await doc_ref.set(
+        {
+            "device_id": resolved_id,
+            "status": "ALLOWED",
+            "last_seen": datetime.now(timezone.utc),
+        },
+        merge=True,
+    )
+    await doc_ref.update({"hits": Increment(1)})
+    return {"device_id": resolved_id, "registered": True}
 
 
 @app.websocket("/ws")
