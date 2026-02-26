@@ -137,6 +137,13 @@ export function useAudio({ onChunk, onSpeechStart }) {
   }, [])
 
   const stopPlayback = useCallback(() => {
+    // Reset the schedule pointer so the next response starts immediately.
+    // Do NOT close the AudioContext — a closed context cannot be reused and
+    // would cause all subsequent audio to silently fail.
+    nextStartTimeRef.current = 0
+  }, [])
+
+  const closePlayback = useCallback(() => {
     if (playbackCtxRef.current) {
       playbackCtxRef.current.close()
       playbackCtxRef.current = null
@@ -144,5 +151,5 @@ export function useAudio({ onChunk, onSpeechStart }) {
     nextStartTimeRef.current = 0
   }, [])
 
-  return { startRecording, stopRecording, onAudioReceived, stopPlayback }
+  return { startRecording, stopRecording, onAudioReceived, stopPlayback, closePlayback }
 }

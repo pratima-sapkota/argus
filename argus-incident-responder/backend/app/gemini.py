@@ -1,17 +1,77 @@
 import asyncio
 import base64
 import json
+import logging
 
 from google import genai
+
+logger = logging.getLogger(__name__)
 from google.genai import types
 
 from app.config import settings
+from app.tools import get_high_severity_threats, get_traffic_by_port
 
 GEMINI_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
 _client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
+_SYSTEM_INSTRUCTION = (
+    "You are Argus, an elite, military-precise Security Operations Center (SOC) AI assistant. "
+    "You have direct access to live network telemetry via BigQuery. "
+    "When an analyst asks about threats or port traffic, call the appropriate tool and report "
+    "findings concisely: lead with the most critical data, use clear tactical language, "
+    "and keep responses under 60 seconds of speech. Never speculate beyond the data returned."
+)
+
+_TOOL_DECLARATIONS = [
+    {
+        "function_declarations": [
+            {
+                "name": "get_high_severity_threats",
+                "description": (
+                    "Query network_logs for the most recent MALICIOUS threat entries. "
+                    "Returns log_id, src_ip, dest_ip, dest_port, timestamp, and bytes "
+                    "for the top N rows ordered by most recent first."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "limit": {
+                            "type": "INTEGER",
+                            "description": "Maximum number of malicious rows to return. Defaults to 5.",
+                        }
+                    },
+                },
+            },
+            {
+                "name": "get_traffic_by_port",
+                "description": (
+                    "Query network_logs for traffic targeting a specific destination port. "
+                    "Returns log_id, src_ip, threat_intel_status, timestamp, and bytes "
+                    "for the top N rows ordered by most recent first."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "port": {
+                            "type": "INTEGER",
+                            "description": "The destination port number to filter on.",
+                        },
+                        "limit": {
+                            "type": "INTEGER",
+                            "description": "Maximum number of rows to return. Defaults to 5.",
+                        },
+                    },
+                    "required": ["port"],
+                },
+            },
+        ]
+    }
+]
+
 _LIVE_CONFIG = types.LiveConnectConfig(
+    system_instruction=_SYSTEM_INSTRUCTION,
+    tools=_TOOL_DECLARATIONS,
     response_modalities=["AUDIO"],
     speech_config=types.SpeechConfig(
         voice_config=types.VoiceConfig(
@@ -19,6 +79,12 @@ _LIVE_CONFIG = types.LiveConnectConfig(
         )
     ),
 )
+
+
+_TOOL_MAP = {
+    "get_high_severity_threats": get_high_severity_threats,
+    "get_traffic_by_port": get_traffic_by_port,
+}
 
 
 class GeminiSession:
@@ -45,6 +111,23 @@ class GeminiSession:
         while True:
             try:
                 async for msg in self._session.receive():
+                    if msg.tool_call:
+                        for fc in msg.tool_call.function_calls:
+                            fn = _TOOL_MAP.get(fc.name)
+                            args = fc.args or {}
+                            try:
+                                result = fn(**args) if fn else [{"error": f"Unknown tool: {fc.name}"}]
+                            except Exception as e:
+                                logger.error("Tool %s raised: %s", fc.name, e)
+                                result = [{"error": str(e)}]
+                            await self._session.send_tool_response(
+                                function_responses=types.FunctionResponse(
+                                    name=fc.name,
+                                    id=fc.id,
+                                    response={"output": result},
+                                )
+                            )
+                        continue
                     if msg.data:
                         b64 = base64.b64encode(msg.data).decode()
                         await websocket.send_text(
@@ -56,5 +139,6 @@ class GeminiSession:
                     if msg.server_content and msg.server_content.turn_complete:
                         await websocket.send_text(json.dumps({"type": "turn_complete"}))
                         break
-            except Exception:
+            except Exception as e:
+                logger.error("receive_audio_loop error: %s", e)
                 break

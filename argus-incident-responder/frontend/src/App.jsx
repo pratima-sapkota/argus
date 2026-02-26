@@ -14,7 +14,7 @@ export default function App() {
   // without creating a circular dependency between the two hooks.
   const stopPlaybackRef = useRef(null)
 
-  const { onAudioReceived, startRecording, stopRecording, stopPlayback } = useAudio({
+  const { onAudioReceived, startRecording, stopRecording, stopPlayback, closePlayback } = useAudio({
     onChunk: useCallback((b64) => sendChunkRef.current?.(b64), []),
     onSpeechStart: useCallback(() => stopPlaybackRef.current?.(), []),
   })
@@ -38,6 +38,7 @@ export default function App() {
       setActive(true)
     } else {
       stopRecording()
+      closePlayback()
       disconnect()
       setActive(false)
     }
