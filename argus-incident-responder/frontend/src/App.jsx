@@ -1,9 +1,13 @@
 import { useRef, useCallback, useState } from 'react'
 import { useAudio } from './hooks/useAudio'
 import { useWebSocket } from './hooks/useWebSocket'
+import { NetworkTable } from './components/NetworkTable'
 
 export default function App() {
   const [active, setActive] = useState(false)
+  const [threats, setThreats] = useState([])
+  const [filteredLogs, setFilteredLogs] = useState([])
+  const [traffic, setTraffic] = useState([])
 
   // Ref to break circular dependency:
   // useAudio needs to call sendAudioChunk, but sendAudioChunk comes from useWebSocket.
@@ -19,10 +23,24 @@ export default function App() {
     onSpeechStart: useCallback(() => stopPlaybackRef.current?.(), []),
   })
 
+  const handleUiUpdate = useCallback((msg) => {
+    if (msg.action === 'RENDER_THREATS') setThreats(msg.payload)
+    else if (msg.action === 'RENDER_TRAFFIC') setTraffic(msg.payload)
+    else if (msg.action === 'RENDER_FILTERED_LOGS') setFilteredLogs(msg.payload)
+  }, [])
+
+  const handleInterrupted = useCallback(() => {
+    stopPlaybackRef.current?.()
+    setThreats([])
+    setFilteredLogs([])
+    setTraffic([])
+  }, [])
+
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
     onTurnComplete: stopPlayback,
-    onInterrupted: stopPlayback,
+    onInterrupted: handleInterrupted,
+    onUiUpdate: handleUiUpdate,
   })
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback
@@ -40,12 +58,17 @@ export default function App() {
       stopRecording()
       closePlayback()
       disconnect()
+      setThreats([])
+      setFilteredLogs([])
+      setTraffic([])
       setActive(false)
     }
   }
 
+  const hasData = threats.length > 0 || traffic.length > 0 || filteredLogs.length > 0
+
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-8">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-start py-10 gap-8">
       <h1 className="text-3xl font-bold text-white tracking-wide">Argus SOC Agent</h1>
 
       {/* Pulsing indicator */}
@@ -87,6 +110,42 @@ export default function App() {
         <span className="text-gray-500 text-xs">
           {connected ? 'WebSocket connected' : 'Not connected'}
         </span>
+      </div>
+
+      {/* Data panel */}
+      <div className="w-full max-w-4xl mt-4">
+        {!hasData ? (
+          <p className="text-center text-gray-600 text-sm tracking-widest uppercase">
+            Monitoring Network...
+          </p>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {threats.length > 0 && (
+              <section>
+                <h2 className="text-red-400 text-xs font-semibold uppercase tracking-widest mb-3">
+                  High Severity Threats
+                </h2>
+                <NetworkTable rows={threats} variant="threats" />
+              </section>
+            )}
+            {filteredLogs.length > 0 && (
+              <section>
+                <h2 className="text-blue-400 text-xs font-semibold uppercase tracking-widest mb-3">
+                  Filtered Network Logs
+                </h2>
+                <NetworkTable rows={filteredLogs} variant="threats" />
+              </section>
+            )}
+            {traffic.length > 0 && (
+              <section>
+                <h2 className="text-yellow-400 text-xs font-semibold uppercase tracking-widest mb-3">
+                  Port Traffic Analysis
+                </h2>
+                <NetworkTable rows={traffic} variant="traffic" />
+              </section>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

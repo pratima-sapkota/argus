@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 from google.genai import types
 
 from app.config import settings
-from app.tools import get_high_severity_threats, get_traffic_by_port
+from app.tools import filter_network_logs, get_high_severity_threats, get_traffic_by_port
 
 GEMINI_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
@@ -40,6 +40,48 @@ _TOOL_DECLARATIONS = [
                             "type": "INTEGER",
                             "description": "Maximum number of malicious rows to return. Defaults to 5.",
                         }
+                    },
+                },
+            },
+            {
+                "name": "filter_network_logs",
+                "description": (
+                    "Query network_logs with user-specified column filters. "
+                    "All parameters are optional — combine any subset to narrow results. "
+                    "Returns log_id, src_ip, dest_ip, dest_port, timestamp, bytes, and threat_intel_status "
+                    "ordered by most recent first."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "src_ip": {
+                            "type": "STRING",
+                            "description": "Filter by exact source IP address.",
+                        },
+                        "dest_ip": {
+                            "type": "STRING",
+                            "description": "Filter by exact destination IP address.",
+                        },
+                        "dest_port": {
+                            "type": "INTEGER",
+                            "description": "Filter by destination port number.",
+                        },
+                        "threat_intel_status": {
+                            "type": "STRING",
+                            "description": "Filter by threat status: CLEAN, SUSPICIOUS, or MALICIOUS.",
+                        },
+                        "min_bytes": {
+                            "type": "INTEGER",
+                            "description": "Include only rows where bytes >= this value.",
+                        },
+                        "max_bytes": {
+                            "type": "INTEGER",
+                            "description": "Include only rows where bytes <= this value.",
+                        },
+                        "limit": {
+                            "type": "INTEGER",
+                            "description": "Maximum number of rows to return. Defaults to 10.",
+                        },
                     },
                 },
             },
@@ -84,6 +126,13 @@ _LIVE_CONFIG = types.LiveConnectConfig(
 _TOOL_MAP = {
     "get_high_severity_threats": get_high_severity_threats,
     "get_traffic_by_port": get_traffic_by_port,
+    "filter_network_logs": filter_network_logs,
+}
+
+_TOOL_ACTION_MAP = {
+    "get_high_severity_threats": "RENDER_THREATS",
+    "get_traffic_by_port":       "RENDER_TRAFFIC",
+    "filter_network_logs":       "RENDER_FILTERED_LOGS",
 }
 
 
@@ -127,6 +176,12 @@ class GeminiSession:
                                     response={"output": result},
                                 )
                             )
+                            _has_error = len(result) == 1 and "error" in result[0]
+                            action = _TOOL_ACTION_MAP.get(fc.name)
+                            if action and not _has_error:
+                                await websocket.send_text(
+                                    json.dumps({"type": "ui_update", "action": action, "payload": result})
+                                )
                         continue
                     if msg.data:
                         b64 = base64.b64encode(msg.data).decode()
