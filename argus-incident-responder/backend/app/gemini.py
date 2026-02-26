@@ -50,6 +50,9 @@ class GeminiSession:
                         await websocket.send_text(
                             json.dumps({"type": "audio", "data": b64})
                         )
+                    if msg.server_content and msg.server_content.interrupted:
+                        await websocket.send_text(json.dumps({"type": "interrupted"}))
+                        break
                     if msg.server_content and msg.server_content.turn_complete:
                         await websocket.send_text(json.dumps({"type": "turn_complete"}))
                         break

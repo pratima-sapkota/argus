@@ -10,14 +10,23 @@ export default function App() {
   // We pass a stable ref-forwarding callback to useAudio, then sync the ref after hooks run.
   const sendChunkRef = useRef(null)
 
-  const { onAudioReceived, startRecording, stopRecording, resetPlayback } = useAudio({
+  // stopPlaybackRef lets onSpeechStart (from useAudio) call stopPlayback
+  // without creating a circular dependency between the two hooks.
+  const stopPlaybackRef = useRef(null)
+
+  const { onAudioReceived, startRecording, stopRecording, stopPlayback } = useAudio({
     onChunk: useCallback((b64) => sendChunkRef.current?.(b64), []),
+    onSpeechStart: useCallback(() => stopPlaybackRef.current?.(), []),
   })
 
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
-    onTurnComplete: resetPlayback,
+    onTurnComplete: stopPlayback,
+    onInterrupted: stopPlayback,
   })
+
+  // Sync ref every render so onSpeechStart always calls the latest stopPlayback
+  stopPlaybackRef.current = stopPlayback
 
   // Sync ref every render so useAudio always calls the latest sendAudioChunk
   sendChunkRef.current = sendAudioChunk

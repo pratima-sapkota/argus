@@ -38,7 +38,11 @@ function base64Pcm16ToFloat32(base64) {
   return float32
 }
 
-export function useAudio({ onChunk }) {
+const RMS_THRESHOLD = 0.06      // ~-26 dBFS — typical conversational speech level
+const SPEECH_COOLDOWN_MS = 500  // minimum ms between onSpeechStart fires
+const SPEECH_CONFIRM_FRAMES = 3 // consecutive frames above threshold before firing
+
+export function useAudio({ onChunk, onSpeechStart }) {
   // Capture refs
   const captureCtxRef = useRef(null)
   const processorRef = useRef(null)
@@ -47,6 +51,10 @@ export function useAudio({ onChunk }) {
   // Playback refs
   const playbackCtxRef = useRef(null)
   const nextStartTimeRef = useRef(0)
+
+  // VAD state refs
+  const lastSpeechFireRef = useRef(0)  // timestamp of last onSpeechStart fire
+  const consecutiveFramesRef = useRef(0) // frames above threshold in a row
 
   const startRecording = useCallback(async () => {
     if (captureCtxRef.current) return
@@ -64,13 +72,35 @@ export function useAudio({ onChunk }) {
 
     processor.onaudioprocess = (e) => {
       const float32 = e.inputBuffer.getChannelData(0)
+
+      // VAD: require SPEECH_CONFIRM_FRAMES consecutive frames above threshold
+      // to avoid triggering on transient noise spikes (key clicks, door slams, etc.)
+      if (onSpeechStart) {
+        let sumSq = 0
+        for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i]
+        const rms = Math.sqrt(sumSq / float32.length)
+        if (rms > RMS_THRESHOLD) {
+          consecutiveFramesRef.current += 1
+          if (consecutiveFramesRef.current >= SPEECH_CONFIRM_FRAMES) {
+            const now = Date.now()
+            if (now - lastSpeechFireRef.current > SPEECH_COOLDOWN_MS) {
+              lastSpeechFireRef.current = now
+              consecutiveFramesRef.current = 0
+              onSpeechStart()
+            }
+          }
+        } else {
+          consecutiveFramesRef.current = 0
+        }
+      }
+
       const b64 = float32ToBase64Pcm16(float32, ctx.sampleRate)
       onChunk(b64)
     }
 
     source.connect(processor)
     processor.connect(ctx.destination)
-  }, [onChunk])
+  }, [onChunk, onSpeechStart])
 
   const stopRecording = useCallback(() => {
     processorRef.current?.disconnect()
@@ -106,9 +136,13 @@ export function useAudio({ onChunk }) {
     nextStartTimeRef.current = startAt + buffer.duration
   }, [])
 
-  const resetPlayback = useCallback(() => {
+  const stopPlayback = useCallback(() => {
+    if (playbackCtxRef.current) {
+      playbackCtxRef.current.close()
+      playbackCtxRef.current = null
+    }
     nextStartTimeRef.current = 0
   }, [])
 
-  return { startRecording, stopRecording, onAudioReceived, resetPlayback }
+  return { startRecording, stopRecording, onAudioReceived, stopPlayback }
 }
