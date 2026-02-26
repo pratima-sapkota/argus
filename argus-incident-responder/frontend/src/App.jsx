@@ -10,12 +10,13 @@ export default function App() {
   // We pass a stable ref-forwarding callback to useAudio, then sync the ref after hooks run.
   const sendChunkRef = useRef(null)
 
-  const { onAudioReceived, startRecording, stopRecording } = useAudio({
+  const { onAudioReceived, startRecording, stopRecording, resetPlayback } = useAudio({
     onChunk: useCallback((b64) => sendChunkRef.current?.(b64), []),
   })
 
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
+    onTurnComplete: resetPlayback,
   })
 
   // Sync ref every render so useAudio always calls the latest sendAudioChunk

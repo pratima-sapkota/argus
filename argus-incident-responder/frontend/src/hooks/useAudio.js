@@ -1,7 +1,8 @@
 import { useRef, useCallback } from 'react'
 
 const TARGET_SAMPLE_RATE = 16000
-const SCRIPT_PROCESSOR_BUFFER = 4096
+const SCRIPT_PROCESSOR_BUFFER = 512
+const LOOKAHEAD = 0.05 // seconds — prevents underrun glitches from network jitter
 
 function float32ToBase64Pcm16(float32Array, inputSampleRate) {
   // Decimate from input sample rate down to 16 kHz
@@ -100,10 +101,14 @@ export function useAudio({ onChunk }) {
     source.connect(playCtx.destination)
 
     const now = playCtx.currentTime
-    const startAt = Math.max(now, nextStartTimeRef.current)
+    const startAt = Math.max(now + LOOKAHEAD, nextStartTimeRef.current)
     source.start(startAt)
     nextStartTimeRef.current = startAt + buffer.duration
   }, [])
 
-  return { startRecording, stopRecording, onAudioReceived }
+  const resetPlayback = useCallback(() => {
+    nextStartTimeRef.current = 0
+  }, [])
+
+  return { startRecording, stopRecording, onAudioReceived, resetPlayback }
 }

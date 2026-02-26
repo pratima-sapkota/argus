@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from 'react'
 
 const WS_URL = 'ws://localhost:8000/ws'
 
-export function useWebSocket({ onAudioReceived }) {
+export function useWebSocket({ onAudioReceived, onTurnComplete }) {
   const wsRef = useRef(null)
   const [connected, setConnected] = useState(false)
 
@@ -21,6 +21,8 @@ export function useWebSocket({ onAudioReceived }) {
         const msg = JSON.parse(event.data)
         if (msg.type === 'audio' && msg.data) {
           onAudioReceived(msg.data)
+        } else if (msg.type === 'turn_complete') {
+          onTurnComplete?.()
         }
       } catch {
         // ignore malformed frames
