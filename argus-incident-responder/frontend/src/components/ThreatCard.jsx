@@ -6,10 +6,11 @@ const STATUS_STYLES = {
 const DEFAULT_STYLE = { border: 'border-gray-700', badge: 'bg-gray-800 text-gray-400', dot: 'bg-gray-500', label: 'UNKNOWN' }
 
 function formatBytes(bytes) {
-  if (bytes == null) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1_048_576).toFixed(1)} MB`
+  const n = Number(bytes)
+  if (bytes == null || isNaN(n)) return '—'
+  if (n < 1024) return `${n} B`
+  if (n < 1_048_576) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1_048_576).toFixed(1)} MB`
 }
 
 export function ThreatCard({ log_id, src_ip, dest_ip, dest_port, threat_intel_status, timestamp, bytes, animationDelay = 0 }) {

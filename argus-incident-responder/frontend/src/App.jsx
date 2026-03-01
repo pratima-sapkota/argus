@@ -9,9 +9,7 @@ import { SectionHeader } from './components/SectionHeader'
 
 export default function App() {
   const [active, setActive] = useState(false)
-  const [threats, setThreats] = useState([])
-  const [filteredLogs, setFilteredLogs] = useState([])
-  const [traffic, setTraffic] = useState([])
+  const [history, setHistory] = useState([])
   const [interrupted, setInterrupted] = useState(false)
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
@@ -35,17 +33,20 @@ export default function App() {
     onAgentAmplitude: useCallback((amp) => { agentAmpRef.current = amp }, []),
   })
 
+  const ACTION_TYPE = {
+    RENDER_THREATS: 'threats',
+    RENDER_TRAFFIC: 'traffic',
+    RENDER_FILTERED_LOGS: 'filteredLogs',
+  }
+
   const handleUiUpdate = useCallback((msg) => {
-    if (msg.action === 'RENDER_THREATS') setThreats(msg.payload)
-    else if (msg.action === 'RENDER_TRAFFIC') setTraffic(msg.payload)
-    else if (msg.action === 'RENDER_FILTERED_LOGS') setFilteredLogs(msg.payload)
+    const type = ACTION_TYPE[msg.action]
+    if (!type) return
+    setHistory((prev) => [{ type, rows: msg.payload, timestamp: Date.now() }, ...prev])
   }, [])
 
   const handleInterrupted = useCallback(() => {
     stopPlaybackRef.current?.()
-    setThreats([])
-    setFilteredLogs([])
-    setTraffic([])
     setInterrupted(true)
   }, [])
 
@@ -71,6 +72,7 @@ export default function App() {
 
   const handleToggle = async () => {
     if (!active) {
+      setHistory([])
       connect()
       await startRecording()
       setActive(true)
@@ -78,20 +80,13 @@ export default function App() {
       stopRecording()
       closePlayback()
       disconnect()
-      setThreats([])
-      setFilteredLogs([])
-      setTraffic([])
       setActive(false)
     }
   }
 
   const connections = useActiveConnections()
 
-  const hasData =
-    threats.length > 0 ||
-    traffic.length > 0 ||
-    filteredLogs.length > 0 ||
-    connections.length > 0
+  const hasData = history.length > 0 || connections.length > 0
 
   const now = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
@@ -125,19 +120,27 @@ export default function App() {
           </div>
         ) : (
           <>
-            {threats.length > 0 && (
-              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <SectionHeader title="High Severity Threats" color="red" count={threats.length} />
-                <NetworkTable rows={threats} variant="threats" />
-              </section>
-            )}
-
-            {filteredLogs.length > 0 && (
-              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <SectionHeader title="Filtered Network Logs" color="blue" count={filteredLogs.length} />
-                <NetworkTable rows={filteredLogs} variant="threats" />
-              </section>
-            )}
+            {history.map((entry) => {
+              if (entry.type === 'threats') return (
+                <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="High Severity Threats" color="red" count={entry.rows.length} />
+                  <NetworkTable rows={entry.rows} variant="threats" />
+                </section>
+              )
+              if (entry.type === 'filteredLogs') return (
+                <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Filtered Network Logs" color="blue" count={entry.rows.length} />
+                  <NetworkTable rows={entry.rows} variant="threats" />
+                </section>
+              )
+              if (entry.type === 'traffic') return (
+                <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Port Traffic Analysis" color="yellow" count={entry.rows.length} />
+                  <NetworkTable rows={entry.rows} variant="traffic" />
+                </section>
+              )
+              return null
+            })}
 
             {connections.length > 0 && (
               <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
@@ -147,13 +150,6 @@ export default function App() {
                     <DeviceCard key={c.id} {...c} />
                   ))}
                 </div>
-              </section>
-            )}
-
-            {traffic.length > 0 && (
-              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <SectionHeader title="Port Traffic Analysis" color="yellow" count={traffic.length} />
-                <NetworkTable rows={traffic} variant="traffic" />
               </section>
             )}
           </>

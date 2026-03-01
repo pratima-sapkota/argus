@@ -30,7 +30,7 @@ def _serialize_row(row: dict) -> dict:
         if isinstance(v, (datetime.datetime, datetime.date)):
             out[k] = v.strftime("%b %-d, %Y")
         elif k == "bytes" and isinstance(v, int):
-            out[k] = _human_bytes(v)
+            out[k] = v
         else:
             out[k] = v
     return out
