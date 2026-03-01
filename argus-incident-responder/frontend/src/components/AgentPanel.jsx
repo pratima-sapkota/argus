@@ -247,14 +247,7 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
         {/* Header */}
         <div className="self-stretch flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span
-              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-              style={{
-                background:  connected ? '#6366f1' : '#374151',
-                boxShadow:   connected ? '0 0 6px 2px rgba(99,102,241,0.65)' : 'none',
-                transition: 'all 0.5s',
-              }}
-            />
+            <img src="/icon.png" alt="" className="w-6 h-6 rounded-full flex-shrink-0" />
             <span className="text-gray-300 text-xs font-bold uppercase tracking-widest">
               Argus Agent
             </span>

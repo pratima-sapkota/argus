@@ -108,7 +108,7 @@ export default function App() {
         {/* Header bar */}
         <div className="flex items-center justify-between border-b border-gray-800 pb-4">
           <div className="flex items-center gap-3">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <img src="/icon.png" alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
             <span className="text-white font-bold text-lg tracking-widest uppercase">
               Argus SOC
             </span>
