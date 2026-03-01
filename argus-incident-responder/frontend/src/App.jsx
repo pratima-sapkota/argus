@@ -1,15 +1,23 @@
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 import { useAudio } from './hooks/useAudio'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useActiveConnections } from './hooks/useActiveConnections'
 import { NetworkTable } from './components/NetworkTable'
 import { DeviceCard } from './components/DeviceCard'
+import { AgentPanel } from './components/AgentPanel'
+import { SectionHeader } from './components/SectionHeader'
 
 export default function App() {
   const [active, setActive] = useState(false)
   const [threats, setThreats] = useState([])
   const [filteredLogs, setFilteredLogs] = useState([])
   const [traffic, setTraffic] = useState([])
+  const [interrupted, setInterrupted] = useState(false)
+
+  // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
+  // AgentPanel reads these refs via a stable object reference.
+  const userAmpRef  = useRef(0)
+  const agentAmpRef = useRef(0)
 
   // Ref to break circular dependency:
   // useAudio needs to call sendAudioChunk, but sendAudioChunk comes from useWebSocket.
@@ -23,6 +31,8 @@ export default function App() {
   const { onAudioReceived, startRecording, stopRecording, stopPlayback, closePlayback } = useAudio({
     onChunk: useCallback((b64) => sendChunkRef.current?.(b64), []),
     onSpeechStart: useCallback(() => stopPlaybackRef.current?.(), []),
+    onUserAmplitude: useCallback((amp) => { userAmpRef.current = amp }, []),
+    onAgentAmplitude: useCallback((amp) => { agentAmpRef.current = amp }, []),
   })
 
   const handleUiUpdate = useCallback((msg) => {
@@ -36,7 +46,15 @@ export default function App() {
     setThreats([])
     setFilteredLogs([])
     setTraffic([])
+    setInterrupted(true)
   }, [])
+
+  // Clear interrupted flag after animation
+  useEffect(() => {
+    if (!interrupted) return
+    const t = setTimeout(() => setInterrupted(false), 800)
+    return () => clearTimeout(t)
+  }, [interrupted])
 
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
@@ -69,102 +87,88 @@ export default function App() {
 
   const connections = useActiveConnections()
 
-  const hasData = threats.length > 0 || traffic.length > 0 || filteredLogs.length > 0
+  const hasData =
+    threats.length > 0 ||
+    traffic.length > 0 ||
+    filteredLogs.length > 0 ||
+    connections.length > 0
+
+  const now = new Date().toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-start py-10 gap-8">
-      <h1 className="text-3xl font-bold text-white tracking-wide">Argus SOC Agent</h1>
+    <div className="min-h-screen bg-gray-950 flex">
+      {/* ── Left panel (80%) ── */}
+      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
 
-      {/* Pulsing indicator */}
-      <div className="flex items-center justify-center w-32 h-32">
-        {active ? (
-          <span className="relative flex h-16 w-16">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-            <span className="relative inline-flex rounded-full h-16 w-16 bg-red-600" />
-          </span>
-        ) : (
-          <span className="inline-flex rounded-full h-16 w-16 bg-gray-700" />
-        )}
-      </div>
+        {/* Header bar */}
+        <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+          <div className="flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="text-white font-bold text-lg tracking-widest uppercase">
+              Argus SOC
+            </span>
+          </div>
+          <span className="text-gray-600 text-xs font-mono">{now}</span>
+        </div>
 
-      {/* Status text */}
-      <p className="text-gray-400 text-sm">
-        {active ? 'Listening…' : 'Press Connect to start'}
-      </p>
-
-      {/* Toggle button */}
-      <button
-        onClick={handleToggle}
-        className={`px-8 py-3 rounded-full text-white font-semibold text-lg transition-colors ${
-          active
-            ? 'bg-red-600 hover:bg-red-700'
-            : 'bg-green-600 hover:bg-green-700'
-        }`}
-      >
-        {active ? 'Disconnect' : 'Connect'}
-      </button>
-
-      {/* Connection status badge */}
-      <div className="flex items-center gap-2">
-        <span
-          className={`inline-block w-2 h-2 rounded-full ${
-            connected ? 'bg-green-400' : 'bg-gray-600'
-          }`}
-        />
-        <span className="text-gray-500 text-xs">
-          {connected ? 'WebSocket connected' : 'Not connected'}
-        </span>
-      </div>
-
-      {/* Data panel */}
-      <div className="w-full max-w-4xl mt-4">
+        {/* Data sections or empty state */}
         {!hasData ? (
-          <p className="text-center text-gray-600 text-sm tracking-widest uppercase">
-            Monitoring Network...
-          </p>
+          <div className="flex-1 flex items-center justify-center dot-grid rounded-xl">
+            <p className="text-gray-600 text-sm tracking-widest uppercase">
+              Monitoring network…
+            </p>
+          </div>
         ) : (
-          <div className="flex flex-col gap-6">
+          <>
             {threats.length > 0 && (
-              <section>
-                <h2 className="text-red-400 text-xs font-semibold uppercase tracking-widest mb-3">
-                  High Severity Threats
-                </h2>
+              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <SectionHeader title="High Severity Threats" color="red" count={threats.length} />
                 <NetworkTable rows={threats} variant="threats" />
               </section>
             )}
+
             {filteredLogs.length > 0 && (
-              <section>
-                <h2 className="text-blue-400 text-xs font-semibold uppercase tracking-widest mb-3">
-                  Filtered Network Logs
-                </h2>
+              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <SectionHeader title="Filtered Network Logs" color="blue" count={filteredLogs.length} />
                 <NetworkTable rows={filteredLogs} variant="threats" />
               </section>
             )}
+
+            {connections.length > 0 && (
+              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <SectionHeader title="Active Connections" color="cyan" count={connections.length} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {connections.map((c) => (
+                    <DeviceCard key={c.id} {...c} />
+                  ))}
+                </div>
+              </section>
+            )}
+
             {traffic.length > 0 && (
-              <section>
-                <h2 className="text-yellow-400 text-xs font-semibold uppercase tracking-widest mb-3">
-                  Port Traffic Analysis
-                </h2>
+              <section className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <SectionHeader title="Port Traffic Analysis" color="yellow" count={traffic.length} />
                 <NetworkTable rows={traffic} variant="traffic" />
               </section>
             )}
-          </div>
+          </>
         )}
-      </div>
+      </main>
 
-      {/* Active Connections panel */}
-      {connections.length > 0 && (
-        <div className="w-full max-w-4xl mt-4">
-          <h2 className="text-cyan-400 text-xs font-semibold uppercase tracking-widest mb-3">
-            Active Connections
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {connections.map((c) => (
-              <DeviceCard key={c.id} {...c} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ── Right panel (agent sidebar) ── */}
+      <AgentPanel
+        active={active}
+        connected={connected}
+        onToggle={handleToggle}
+        userAmpRef={userAmpRef}
+        agentAmpRef={agentAmpRef}
+        interrupted={interrupted}
+      />
     </div>
   )
 }

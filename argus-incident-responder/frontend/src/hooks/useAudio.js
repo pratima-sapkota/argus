@@ -42,7 +42,7 @@ const RMS_THRESHOLD = 0.06      // ~-26 dBFS — typical conversational speech l
 const SPEECH_COOLDOWN_MS = 500  // minimum ms between onSpeechStart fires
 const SPEECH_CONFIRM_FRAMES = 3 // consecutive frames above threshold before firing
 
-export function useAudio({ onChunk, onSpeechStart }) {
+export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmplitude }) {
   // Capture refs
   const captureCtxRef = useRef(null)
   const processorRef = useRef(null)
@@ -51,6 +51,8 @@ export function useAudio({ onChunk, onSpeechStart }) {
   // Playback refs
   const playbackCtxRef = useRef(null)
   const nextStartTimeRef = useRef(0)
+  const agentAnalyserRef = useRef(null)
+  const agentAnimFrameRef = useRef(null)
 
   // VAD state refs
   const lastSpeechFireRef = useRef(0)  // timestamp of last onSpeechStart fire
@@ -73,12 +75,16 @@ export function useAudio({ onChunk, onSpeechStart }) {
     processor.onaudioprocess = (e) => {
       const float32 = e.inputBuffer.getChannelData(0)
 
+      let sumSq = 0
+      for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i]
+      const rms = Math.sqrt(sumSq / float32.length)
+
+      // Emit user amplitude for waveform visualization
+      onUserAmplitude?.(rms)
+
       // VAD: require SPEECH_CONFIRM_FRAMES consecutive frames above threshold
       // to avoid triggering on transient noise spikes (key clicks, door slams, etc.)
       if (onSpeechStart) {
-        let sumSq = 0
-        for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i]
-        const rms = Math.sqrt(sumSq / float32.length)
         if (rms > RMS_THRESHOLD) {
           consecutiveFramesRef.current += 1
           if (consecutiveFramesRef.current >= SPEECH_CONFIRM_FRAMES) {
@@ -100,7 +106,7 @@ export function useAudio({ onChunk, onSpeechStart }) {
 
     source.connect(processor)
     processor.connect(ctx.destination)
-  }, [onChunk, onSpeechStart])
+  }, [onChunk, onSpeechStart, onUserAmplitude])
 
   const stopRecording = useCallback(() => {
     processorRef.current?.disconnect()
@@ -116,11 +122,33 @@ export function useAudio({ onChunk, onSpeechStart }) {
   const onAudioReceived = useCallback((base64) => {
     // Lazy-init playback context on first received audio
     if (!playbackCtxRef.current) {
-      playbackCtxRef.current = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE })
+      const playCtx = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE })
+      playbackCtxRef.current = playCtx
       nextStartTimeRef.current = 0
+
+      // Create analyser for agent amplitude
+      const analyser = playCtx.createAnalyser()
+      analyser.fftSize = 256
+      analyser.connect(playCtx.destination)
+      agentAnalyserRef.current = analyser
+
+      // Poll analyser for amplitude
+      const dataArray = new Uint8Array(analyser.fftSize)
+      const poll = () => {
+        analyser.getByteTimeDomainData(dataArray)
+        let sumSq = 0
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128
+          sumSq += v * v
+        }
+        onAgentAmplitude?.(Math.sqrt(sumSq / dataArray.length))
+        agentAnimFrameRef.current = requestAnimationFrame(poll)
+      }
+      agentAnimFrameRef.current = requestAnimationFrame(poll)
     }
 
     const playCtx = playbackCtxRef.current
+    const analyser = agentAnalyserRef.current
     const float32 = base64Pcm16ToFloat32(base64)
 
     const buffer = playCtx.createBuffer(1, float32.length, TARGET_SAMPLE_RATE)
@@ -128,13 +156,14 @@ export function useAudio({ onChunk, onSpeechStart }) {
 
     const source = playCtx.createBufferSource()
     source.buffer = buffer
-    source.connect(playCtx.destination)
+    // Route through analyser so amplitude is measured
+    source.connect(analyser)
 
     const now = playCtx.currentTime
     const startAt = Math.max(now + LOOKAHEAD, nextStartTimeRef.current)
     source.start(startAt)
     nextStartTimeRef.current = startAt + buffer.duration
-  }, [])
+  }, [onAgentAmplitude])
 
   const stopPlayback = useCallback(() => {
     // Reset the schedule pointer so the next response starts immediately.
@@ -144,6 +173,11 @@ export function useAudio({ onChunk, onSpeechStart }) {
   }, [])
 
   const closePlayback = useCallback(() => {
+    if (agentAnimFrameRef.current) {
+      cancelAnimationFrame(agentAnimFrameRef.current)
+      agentAnimFrameRef.current = null
+    }
+    agentAnalyserRef.current = null
     if (playbackCtxRef.current) {
       playbackCtxRef.current.close()
       playbackCtxRef.current = null
