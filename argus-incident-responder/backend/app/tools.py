@@ -136,6 +136,91 @@ def filter_network_logs(
         return [{"error": str(e)}]
 
 
+async def get_active_connections(limit: int = 20) -> list[dict]:
+    """Fetch active device connections from Firestore.
+
+    Retrieves documents from the active_connections Firestore collection,
+    returning up to `limit` records. Each document is returned with its
+    device_id (document ID) merged into the data fields.
+
+    Args:
+        limit: Maximum number of connection documents to return. Defaults to 20.
+
+    Returns:
+        A list of dicts containing device_id and all stored connection fields.
+        On error, returns a single-element list containing {"error": "<message>"}.
+    """
+    try:
+        docs = db.collection("active_connections").limit(limit).stream()
+        result = []
+        async for doc in docs:
+            data = doc.to_dict() or {}
+            data["device_id"] = doc.id
+            result.append(data)
+        return result if result else [{"info": "No active connections found."}]
+    except Exception as e:
+        logger.error("get_active_connections failed: %s", e)
+        return [{"error": str(e)}]
+
+
+async def get_connections_by_status(status: str, limit: int = 20) -> list[dict]:
+    """Fetch connections from Firestore filtered by status.
+
+    Queries the active_connections Firestore collection for documents whose
+    'status' field matches the given value (e.g. ACTIVE, BLOCKED, SUSPICIOUS).
+
+    Args:
+        status: The connection status to filter on (ACTIVE, BLOCKED, SUSPICIOUS).
+        limit: Maximum number of documents to return. Defaults to 20.
+
+    Returns:
+        A list of dicts containing device_id and all stored connection fields.
+        On error, returns a single-element list containing {"error": "<message>"}.
+    """
+    try:
+        docs = (
+            db.collection("active_connections")
+            .where("status", "==", status.upper())
+            .limit(limit)
+            .stream()
+        )
+        result = []
+        async for doc in docs:
+            data = doc.to_dict() or {}
+            data["device_id"] = doc.id
+            result.append(data)
+        return result if result else [{"info": f"No connections with status '{status.upper()}' found."}]
+    except Exception as e:
+        logger.error("get_connections_by_status failed for status=%s: %s", status, e)
+        return [{"error": str(e)}]
+
+
+async def get_connection_details(device_id: str) -> list[dict]:
+    """Fetch connection details for a specific device ID from Firestore.
+
+    Retrieves the document for the given device_id from the active_connections
+    Firestore collection.
+
+    Args:
+        device_id: The device ID or IP address to look up.
+
+    Returns:
+        A single-element list containing the connection document fields plus
+        device_id. If the document does not exist, returns
+        [{"info": "Device not found."}]. On error, returns [{"error": "<message>"}].
+    """
+    try:
+        doc = await db.collection("active_connections").document(device_id).get()
+        if not doc.exists:
+            return [{"info": f"Device '{device_id}' not found in active connections."}]
+        data = doc.to_dict() or {}
+        data["device_id"] = doc.id
+        return [data]
+    except Exception as e:
+        logger.error("get_connection_details failed for %s: %s", device_id, e)
+        return [{"error": str(e)}]
+
+
 async def block_device(device_id: str) -> list[dict]:
     """Blocks a specific device ID or IP address from accessing the network by updating the firewall rules."""
     try:

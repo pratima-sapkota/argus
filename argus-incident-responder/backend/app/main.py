@@ -53,6 +53,11 @@ async def health():
 @app.get("/simulate-traffic")
 async def simulate_traffic(request: Request, device_id: str | None = None):
     resolved_id = device_id or request.client.host
+    if resolved_id in blocked_ids:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Access Denied by Project Argus Firewall"},
+        )
     doc_ref = db.collection("active_connections").document(resolved_id)
     await doc_ref.set(
         {

@@ -9,7 +9,15 @@ logger = logging.getLogger(__name__)
 from google.genai import types
 
 from app.config import settings
-from app.tools import block_device, filter_network_logs, get_high_severity_threats, get_traffic_by_port
+from app.tools import (
+    block_device,
+    filter_network_logs,
+    get_active_connections,
+    get_connection_details,
+    get_connections_by_status,
+    get_high_severity_threats,
+    get_traffic_by_port,
+)
 
 GEMINI_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
@@ -102,6 +110,61 @@ _TOOL_DECLARATIONS = [
                 },
             },
             {
+                "name": "get_active_connections",
+                "description": (
+                    "Fetch all active device connections from Firestore. "
+                    "Returns device_id and connection fields for up to N devices."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "limit": {
+                            "type": "INTEGER",
+                            "description": "Maximum number of connection documents to return. Defaults to 20.",
+                        }
+                    },
+                },
+            },
+            {
+                "name": "get_connections_by_status",
+                "description": (
+                    "Fetch connections from Firestore filtered by status. "
+                    "Valid status values: ACTIVE, BLOCKED, SUSPICIOUS. "
+                    "Returns device_id and connection fields for matching devices."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "status": {
+                            "type": "STRING",
+                            "description": "The connection status to filter on: ACTIVE, BLOCKED, or SUSPICIOUS.",
+                        },
+                        "limit": {
+                            "type": "INTEGER",
+                            "description": "Maximum number of documents to return. Defaults to 20.",
+                        },
+                    },
+                    "required": ["status"],
+                },
+            },
+            {
+                "name": "get_connection_details",
+                "description": (
+                    "Fetch connection details for a specific device ID or IP from Firestore. "
+                    "Returns all stored fields for that device from the active_connections collection."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "device_id": {
+                            "type": "STRING",
+                            "description": "The device ID or IP address to look up.",
+                        }
+                    },
+                    "required": ["device_id"],
+                },
+            },
+            {
                 "name": "get_traffic_by_port",
                 "description": (
                     "Query network_logs for traffic targeting a specific destination port. "
@@ -144,13 +207,19 @@ _TOOL_MAP = {
     "get_traffic_by_port": get_traffic_by_port,
     "filter_network_logs": filter_network_logs,
     "block_device": block_device,
+    "get_active_connections": get_active_connections,
+    "get_connections_by_status": get_connections_by_status,
+    "get_connection_details": get_connection_details,
 }
 
 _TOOL_ACTION_MAP = {
-    "get_high_severity_threats": "RENDER_THREATS",
-    "get_traffic_by_port":       "RENDER_TRAFFIC",
-    "filter_network_logs":       "RENDER_FILTERED_LOGS",
-    "block_device":              "DEVICE_BLOCKED",
+    "get_high_severity_threats":  "RENDER_THREATS",
+    "get_traffic_by_port":        "RENDER_TRAFFIC",
+    "filter_network_logs":        "RENDER_FILTERED_LOGS",
+    "block_device":               "DEVICE_BLOCKED",
+    "get_active_connections":     "RENDER_CONNECTIONS",
+    "get_connections_by_status":  "RENDER_CONNECTIONS",
+    "get_connection_details":     "RENDER_CONNECTIONS",
 }
 
 
