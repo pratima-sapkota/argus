@@ -47,11 +47,11 @@ def get_high_severity_threats(limit: int = 5) -> list[dict]:
 
     Returns:
         A list of dicts with keys log_id, src_ip, dest_ip, dest_port,
-        timestamp, and bytes. On error, returns a single-element list
+        timestamp, bytes, and threat_intel_status. On error, returns a single-element list
         containing {"error": "<message>"}.
     """
     query = """
-        SELECT log_id, src_ip, dest_ip, dest_port, timestamp, bytes
+        SELECT log_id, src_ip, dest_ip, dest_port, timestamp, bytes, threat_intel_status
         FROM argus_soc.network_logs
         WHERE threat_intel_status = 'MALICIOUS'
         ORDER BY timestamp DESC
