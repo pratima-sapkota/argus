@@ -288,4 +288,6 @@ class GeminiSession:
                         break
             except Exception as e:
                 logger.error("receive_audio_loop error: %s", e)
-                break
+                # Don't break — a transient error should not kill the session.
+                # The outer while loop will restart the receive iterator.
+                continue

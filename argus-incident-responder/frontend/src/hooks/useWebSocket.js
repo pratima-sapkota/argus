@@ -5,6 +5,10 @@ const WS_URL = 'ws://localhost:8000/ws'
 export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate }) {
   const wsRef = useRef(null)
   const [connected, setConnected] = useState(false)
+  const onTurnCompleteRef = useRef(onTurnComplete)
+  const onInterruptedRef = useRef(onInterrupted)
+  onTurnCompleteRef.current = onTurnComplete
+  onInterruptedRef.current = onInterrupted
 
   const connect = useCallback(() => {
     if (wsRef.current) return
@@ -20,11 +24,12 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
       try {
         const msg = JSON.parse(event.data)
         if (msg.type === 'audio' && msg.data) {
+          console.log('[ws] audio packet received, bytes:', msg.data.length)
           onAudioReceived(msg.data)
         } else if (msg.type === 'turn_complete') {
-          onTurnComplete?.()
+          onTurnCompleteRef.current?.()
         } else if (msg.type === 'interrupted') {
-          onInterrupted?.()
+          onInterruptedRef.current?.()
         } else if (msg.type === 'ui_update') {
           onUiUpdate?.(msg)
         }

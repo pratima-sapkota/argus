@@ -26,7 +26,7 @@ export default function App() {
   // without creating a circular dependency between the two hooks.
   const stopPlaybackRef = useRef(null)
 
-  const { onAudioReceived, startRecording, stopRecording, stopPlayback, closePlayback } = useAudio({
+  const { onAudioReceived, startRecording, stopRecording, stopPlayback, clearInterrupt, closePlayback } = useAudio({
     onChunk: useCallback((b64) => sendChunkRef.current?.(b64), []),
     onSpeechStart: useCallback(() => stopPlaybackRef.current?.(), []),
     onUserAmplitude: useCallback((amp) => { userAmpRef.current = amp }, []),
@@ -47,8 +47,13 @@ export default function App() {
 
   const handleInterrupted = useCallback(() => {
     stopPlaybackRef.current?.()
+    clearInterrupt()           // open gate for the new agent response
     setInterrupted(true)
-  }, [])
+  }, [clearInterrupt])
+
+  const handleTurnComplete = useCallback(() => {
+    clearInterrupt()  // ensure gate is open for the next turn
+  }, [clearInterrupt])
 
   // Clear interrupted flag after animation
   useEffect(() => {
@@ -59,7 +64,7 @@ export default function App() {
 
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
-    onTurnComplete: stopPlayback,
+    onTurnComplete: handleTurnComplete,
     onInterrupted: handleInterrupted,
     onUiUpdate: handleUiUpdate,
   })

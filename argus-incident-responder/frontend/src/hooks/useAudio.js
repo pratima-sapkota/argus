@@ -38,9 +38,9 @@ function base64Pcm16ToFloat32(base64) {
   return float32
 }
 
-const RMS_THRESHOLD = 0.06      // ~-26 dBFS — typical conversational speech level
-const SPEECH_COOLDOWN_MS = 500  // minimum ms between onSpeechStart fires
-const SPEECH_CONFIRM_FRAMES = 3 // consecutive frames above threshold before firing
+const RMS_THRESHOLD = 0.15      // ~-16 dBFS — filters ambient noise, requires clear speech
+const SPEECH_COOLDOWN_MS = 300  // minimum ms between onSpeechStart fires
+const SPEECH_CONFIRM_FRAMES = 6 // consecutive frames above threshold before firing
 
 export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmplitude }) {
   // Capture refs
@@ -53,6 +53,9 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
   const nextStartTimeRef = useRef(0)
   const agentAnalyserRef = useRef(null)
   const agentAnimFrameRef = useRef(null)
+  const activeSourcesRef = useRef(new Set())  // tracks started BufferSourceNodes
+  const isInterruptedRef  = useRef(false)      // gates onAudioReceived during interrupt
+  const agentSpeakingRef  = useRef(false)      // true while agent audio is scheduled/playing
 
   // VAD state refs
   const lastSpeechFireRef = useRef(0)  // timestamp of last onSpeechStart fire
@@ -82,9 +85,10 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
       // Emit user amplitude for waveform visualization
       onUserAmplitude?.(rms)
 
-      // VAD: require SPEECH_CONFIRM_FRAMES consecutive frames above threshold
-      // to avoid triggering on transient noise spikes (key clicks, door slams, etc.)
-      if (onSpeechStart) {
+      // VAD: require SPEECH_CONFIRM_FRAMES consecutive frames above threshold.
+      // Skip entirely while agent is playing — mic bleed from speakers would
+      // otherwise trigger stopPlayback() and set isInterruptedRef = true.
+      if (onSpeechStart && !agentSpeakingRef.current) {
         if (rms > RMS_THRESHOLD) {
           consecutiveFramesRef.current += 1
           if (consecutiveFramesRef.current >= SPEECH_CONFIRM_FRAMES) {
@@ -123,8 +127,12 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
     // Lazy-init playback context on first received audio
     if (!playbackCtxRef.current) {
       const playCtx = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE })
+      // Browsers start AudioContext suspended when created outside a user gesture.
+      // Must resume explicitly or source.start() calls are silently dropped.
+      playCtx.resume()
       playbackCtxRef.current = playCtx
       nextStartTimeRef.current = 0
+      console.log('[audio] playback ctx created, state:', playCtx.state)
 
       // Create analyser for agent amplitude
       const analyser = playCtx.createAnalyser()
@@ -147,6 +155,11 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
       agentAnimFrameRef.current = requestAnimationFrame(poll)
     }
 
+    if (isInterruptedRef.current) {
+      console.log('[audio] packet blocked — isInterrupted=true')
+      return
+    }
+
     const playCtx = playbackCtxRef.current
     const analyser = agentAnalyserRef.current
     const float32 = base64Pcm16ToFloat32(base64)
@@ -161,15 +174,32 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
 
     const now = playCtx.currentTime
     const startAt = Math.max(now + LOOKAHEAD, nextStartTimeRef.current)
+    console.log('[audio] scheduling packet — ctx.state:', playCtx.state, 'now:', now.toFixed(3), 'startAt:', startAt.toFixed(3), 'samples:', float32.length)
+    agentSpeakingRef.current = true
     source.start(startAt)
+    activeSourcesRef.current.add(source)
+    source.onended = () => {
+      activeSourcesRef.current.delete(source)
+      if (activeSourcesRef.current.size === 0) agentSpeakingRef.current = false
+    }
     nextStartTimeRef.current = startAt + buffer.duration
   }, [onAgentAmplitude])
 
   const stopPlayback = useCallback(() => {
-    // Reset the schedule pointer so the next response starts immediately.
-    // Do NOT close the AudioContext — a closed context cannot be reused and
-    // would cause all subsequent audio to silently fail.
+    // Only interrupt if the agent is actually speaking — don't gate on noise
+    // that fires before any audio has arrived.
+    if (!agentSpeakingRef.current) return
+    isInterruptedRef.current = true
+    agentSpeakingRef.current = false
+    activeSourcesRef.current.forEach((source) => {
+      try { source.stop() } catch { /* already ended */ }
+    })
+    activeSourcesRef.current.clear()
     nextStartTimeRef.current = 0
+  }, [])
+
+  const clearInterrupt = useCallback(() => {
+    isInterruptedRef.current = false
   }, [])
 
   const closePlayback = useCallback(() => {
@@ -182,8 +212,11 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
       playbackCtxRef.current.close()
       playbackCtxRef.current = null
     }
+    activeSourcesRef.current.clear()
+    isInterruptedRef.current = false
+    agentSpeakingRef.current = false
     nextStartTimeRef.current = 0
   }, [])
 
-  return { startRecording, stopRecording, onAudioReceived, stopPlayback, closePlayback }
+  return { startRecording, stopRecording, onAudioReceived, stopPlayback, clearInterrupt, closePlayback }
 }
