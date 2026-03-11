@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { TranscriptFeed } from './TranscriptFeed'
 
 // ─── Unified waveform ────────────────────────────────────────────────────────
 // Single bar waveform that cross-fades color between agent (indigo) and user
@@ -219,7 +220,7 @@ function StatusLabel({ active, connected, interrupted }) {
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false }) {
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [] }) {
   // Derive a snapshot of agentAmp for the orb glow (read once per render, not per frame)
   // The orb uses inline style so React controls it — reads ref on each React render, which is fine.
   const agentAmpSnap = agentAmpRef?.current ?? 0
@@ -307,7 +308,7 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
           </div>
         )}
 
-        <div className="flex-1 min-h-0" />
+        <TranscriptFeed messages={messages} />
 
         {/* Toggle button */}
         <button

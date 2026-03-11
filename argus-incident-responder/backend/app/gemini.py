@@ -194,6 +194,8 @@ _LIVE_CONFIG = types.LiveConnectConfig(
     system_instruction=_SYSTEM_INSTRUCTION,
     tools=_TOOL_DECLARATIONS,
     response_modalities=["AUDIO"],
+    output_audio_transcription=types.AudioTranscriptionConfig(),
+    input_audio_transcription=types.AudioTranscriptionConfig(),
     speech_config=types.SpeechConfig(
         voice_config=types.VoiceConfig(
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Aoede")
@@ -247,6 +249,17 @@ class GeminiSession:
         while True:
             try:
                 async for msg in self._session.receive():
+                    logger.info(
+                        "MSG: tool_call=%s data=%s server_content=%s",
+                        bool(msg.tool_call), bool(msg.data), bool(msg.server_content),
+                    )
+                    if msg.server_content:
+                        sc = msg.server_content
+                        logger.info(
+                            "  SC: turn_complete=%s interrupted=%s output_tx=%s input_tx=%s",
+                            sc.turn_complete, sc.interrupted,
+                            sc.output_transcription, sc.input_transcription,
+                        )
                     if msg.tool_call:
                         for fc in msg.tool_call.function_calls:
                             fn = _TOOL_MAP.get(fc.name)
@@ -280,6 +293,21 @@ class GeminiSession:
                         await websocket.send_text(
                             json.dumps({"type": "audio", "data": b64})
                         )
+                    try:
+                        if msg.server_content and msg.server_content.output_transcription:
+                            text = msg.server_content.output_transcription.text
+                            if text:
+                                await websocket.send_text(
+                                    json.dumps({"type": "transcript", "role": "agent", "text": text})
+                                )
+                        if msg.server_content and msg.server_content.input_transcription:
+                            text = msg.server_content.input_transcription.text
+                            if text:
+                                await websocket.send_text(
+                                    json.dumps({"type": "transcript", "role": "user", "text": text})
+                                )
+                    except Exception as e:
+                        logger.error("Transcription handling error: %s", e, exc_info=True)
                     if msg.server_content and msg.server_content.interrupted:
                         await websocket.send_text(json.dumps({"type": "interrupted"}))
                         break

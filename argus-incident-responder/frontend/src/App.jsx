@@ -11,6 +11,7 @@ export default function App() {
   const [active, setActive] = useState(false)
   const [history, setHistory] = useState([])
   const [interrupted, setInterrupted] = useState(false)
+  const [messages, setMessages] = useState([])
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
   // AgentPanel reads these refs via a stable object reference.
@@ -55,6 +56,19 @@ export default function App() {
     clearInterrupt()  // ensure gate is open for the next turn
   }, [clearInterrupt])
 
+  const handleTranscript = useCallback(({ role, text }) => {
+    if (!text) return
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (last && last.role === role) {
+        const updated = [...prev]
+        updated[updated.length - 1] = { ...last, text: last.text + text }
+        return updated
+      }
+      return [...prev, { role, text, timestamp: Date.now() }]
+    })
+  }, [])
+
   // Clear interrupted flag after animation
   useEffect(() => {
     if (!interrupted) return
@@ -67,6 +81,7 @@ export default function App() {
     onTurnComplete: handleTurnComplete,
     onInterrupted: handleInterrupted,
     onUiUpdate: handleUiUpdate,
+    onTranscript: handleTranscript,
   })
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback
@@ -78,6 +93,7 @@ export default function App() {
   const handleToggle = async () => {
     if (!active) {
       setHistory([])
+      setMessages([])
       connect()
       await startRecording()
       setActive(true)
@@ -169,6 +185,7 @@ export default function App() {
         userAmpRef={userAmpRef}
         agentAmpRef={agentAmpRef}
         interrupted={interrupted}
+        messages={messages}
       />
     </div>
   )
