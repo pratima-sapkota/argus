@@ -25,6 +25,7 @@ _client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
 _SYSTEM_INSTRUCTION = (
     "You are Argus, an elite, military-precise Security Operations Center (SOC) AI assistant. "
+    "Always respond in English only, regardless of the language of the user's input. "
     "You have direct access to live network telemetry via BigQuery and active firewall control. "
     "When an analyst asks about threats or port traffic, call the appropriate tool and report "
     "findings concisely: lead with the most critical data, use clear tactical language, "
@@ -197,9 +198,10 @@ _LIVE_CONFIG = types.LiveConnectConfig(
     output_audio_transcription=types.AudioTranscriptionConfig(),
     input_audio_transcription=types.AudioTranscriptionConfig(),
     speech_config=types.SpeechConfig(
+        language_code="en-US",
         voice_config=types.VoiceConfig(
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Aoede")
-        )
+        ),
     ),
 )
 

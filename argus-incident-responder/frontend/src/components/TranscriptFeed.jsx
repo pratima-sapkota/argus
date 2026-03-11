@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import Markdown from 'react-markdown'
 
 export function TranscriptFeed({ messages }) {
   const endRef = useRef(null)
@@ -23,13 +24,13 @@ export function TranscriptFeed({ messages }) {
         {messages.map((msg, i) => {
           const isAgent = msg.role === 'agent'
           return isAgent ? (
-            <p
+            <div
               key={i}
-              className="w-full text-xs leading-relaxed text-left"
+              className="agent-markdown w-full text-xs leading-relaxed text-left"
               style={{ color: '#c7d2fe' }}
             >
-              {msg.text}
-            </p>
+              <Markdown>{msg.text}</Markdown>
+            </div>
           ) : (
             <div key={i} className="w-full flex justify-end">
               <div
