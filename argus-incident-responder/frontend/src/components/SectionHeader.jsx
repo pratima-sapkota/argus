@@ -19,13 +19,27 @@ const COLOR_BADGE = {
   cyan:   'bg-cyan-950 text-cyan-400',
 }
 
-export function SectionHeader({ title, color = 'blue', count }) {
+export function SectionHeader({ title, color = 'blue', count, expanded, onToggle }) {
   const dot   = COLOR_DOT[color]   ?? 'bg-gray-500'
   const text  = COLOR_TEXT[color]  ?? 'text-gray-400'
   const badge = COLOR_BADGE[color] ?? 'bg-gray-800 text-gray-400'
+  const collapsible = onToggle != null
 
   return (
-    <div className="flex items-center gap-2 mb-3">
+    <div
+      className={`flex items-center gap-2 ${collapsible ? 'cursor-pointer select-none' : 'mb-3'} ${collapsible && expanded ? 'mb-3' : ''}`}
+      onClick={onToggle}
+    >
+      {collapsible && (
+        <svg
+          className="w-3.5 h-3.5 text-gray-500 transition-transform duration-200 flex-shrink-0"
+          style={{ transform: expanded ? 'rotate(90deg)' : undefined }}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+        </svg>
+      )}
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
       <h2 className={`text-xs font-semibold uppercase tracking-widest ${text}`}>
         {title}

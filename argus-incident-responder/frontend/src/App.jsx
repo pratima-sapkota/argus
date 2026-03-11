@@ -12,6 +12,7 @@ export default function App() {
   const [history, setHistory] = useState([])
   const [interrupted, setInterrupted] = useState(false)
   const [messages, setMessages] = useState([])
+  const [collapseOverrides, setCollapseOverrides] = useState({})
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
   // AgentPanel reads these refs via a stable object reference.
@@ -94,6 +95,7 @@ export default function App() {
     if (!active) {
       setHistory([])
       setMessages([])
+      setCollapseOverrides({})
       connect()
       await startRecording()
       setActive(true)
@@ -141,23 +143,29 @@ export default function App() {
           </div>
         ) : (
           <>
-            {history.map((entry) => {
+            {history.map((entry, index) => {
+              const expanded = collapseOverrides[entry.timestamp] ?? (index === 0)
+              const toggle = () =>
+                setCollapseOverrides((prev) => ({ ...prev, [entry.timestamp]: !expanded }))
+
+              const sectionProps = { expanded, onToggle: toggle }
+
               if (entry.type === 'threats') return (
                 <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="High Severity Threats" color="red" count={entry.rows.length} />
-                  <NetworkTable rows={entry.rows} variant="threats" />
+                  <SectionHeader title="High Severity Threats" color="red" count={entry.rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={entry.rows} variant="threats" />}
                 </section>
               )
               if (entry.type === 'filteredLogs') return (
                 <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="Filtered Network Logs" color="blue" count={entry.rows.length} />
-                  <NetworkTable rows={entry.rows} variant="threats" />
+                  <SectionHeader title="Filtered Network Logs" color="blue" count={entry.rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={entry.rows} variant="threats" />}
                 </section>
               )
               if (entry.type === 'traffic') return (
                 <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="Port Traffic Analysis" color="yellow" count={entry.rows.length} />
-                  <NetworkTable rows={entry.rows} variant="traffic" />
+                  <SectionHeader title="Port Traffic Analysis" color="yellow" count={entry.rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={entry.rows} variant="traffic" />}
                 </section>
               )
               return null

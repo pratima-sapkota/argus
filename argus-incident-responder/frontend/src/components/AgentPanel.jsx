@@ -109,66 +109,58 @@ function UnifiedWaveform({ userAmpRef, agentAmpRef, active, interrupted }) {
     return () => cancelAnimationFrame(rafRef.current)
   }, [draw])
 
-  return <canvas ref={canvasRef} width={220} height={64} className="w-full" />
+  return <canvas ref={canvasRef} width={220} height={44} className="w-full" />
 }
 
-// ─── Speaker legend ──────────────────────────────────────────────────────────
-// Shows which color = which speaker as small labeled dots below the waveform.
-
-function SpeakerLegend({ active, interrupted }) {
-  if (!active) return null
-  return (
-    <div className="flex items-center justify-center gap-4 mt-1">
-      <div className="flex items-center gap-1.5">
-        <span
-          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          style={{
-            background: interrupted ? '#ef4444' : '#6366f1',
-            boxShadow: interrupted ? '0 0 4px rgba(239,68,68,0.7)' : '0 0 4px rgba(99,102,241,0.7)',
-            transition: 'background 0.3s, box-shadow 0.3s',
-          }}
-        />
-        <span className="text-gray-600 text-xs">Agent</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          style={{
-            background: interrupted ? '#ef4444' : '#10b981',
-            boxShadow: interrupted ? '0 0 4px rgba(239,68,68,0.7)' : '0 0 4px rgba(16,185,129,0.7)',
-            transition: 'background 0.3s, box-shadow 0.3s',
-          }}
-        />
-        <span className="text-gray-600 text-xs">You</span>
-      </div>
-    </div>
-  )
-}
 
 // ─── Orb ────────────────────────────────────────────────────────────────────
 
-function Orb({ active, interrupted, agentAmp }) {
+function Orb({ active, connected, interrupted, agentAmp }) {
   const scale = active ? 1 + agentAmp * 0.18 : 1
 
+  const orbBg = active
+    ? interrupted
+      ? 'radial-gradient(circle at 35% 35%, #f87171, #dc2626)'
+      : 'radial-gradient(circle at 35% 35%, #a5b4fc, #6366f1, #3730a3)'
+    : connected
+      ? 'radial-gradient(circle at 35% 35%, #34d399, #10b981, #059669)'
+      : 'radial-gradient(circle at 35% 35%, #374151, #111827)'
+
+  const orbShadow = active
+    ? interrupted
+      ? '0 0 28px 8px rgba(239,68,68,0.55)'
+      : `0 0 ${20 + agentAmp * 40}px ${4 + agentAmp * 12}px rgba(99,102,241,0.55)`
+    : connected
+      ? '0 0 20px 4px rgba(16,185,129,0.45)'
+      : '0 2px 12px rgba(0,0,0,0.5)'
+
+  const showRings = active || connected
+
   return (
-    <div className="relative flex items-center justify-center w-28 h-28">
-      {active && (
+    <div className="relative flex items-center justify-center w-20 h-20">
+      {showRings && (
         <>
           <span
             className="absolute inset-0 rounded-full"
             style={{
               background: interrupted
                 ? 'radial-gradient(circle, rgba(239,68,68,0.22) 0%, transparent 70%)'
-                : 'radial-gradient(circle, rgba(99,102,241,0.22) 0%, transparent 70%)',
-              transform: `scale(${1 + agentAmp * 0.4})`,
+                : active
+                  ? 'radial-gradient(circle, rgba(99,102,241,0.22) 0%, transparent 70%)'
+                  : 'radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 70%)',
+              transform: `scale(${active ? 1 + agentAmp * 0.4 : 1.05})`,
               transition: 'transform 60ms linear, background 0.35s ease',
             }}
           />
           <span
             className="absolute inset-2 rounded-full animate-ping"
             style={{
-              background: interrupted ? 'rgba(239,68,68,0.25)' : 'rgba(99,102,241,0.18)',
-              animationDuration: '1.8s',
+              background: interrupted
+                ? 'rgba(239,68,68,0.25)'
+                : active
+                  ? 'rgba(99,102,241,0.18)'
+                  : 'rgba(16,185,129,0.12)',
+              animationDuration: active ? '1.8s' : '2.4s',
             }}
           />
         </>
@@ -177,18 +169,10 @@ function Orb({ active, interrupted, agentAmp }) {
       <span
         className="relative flex rounded-full items-center justify-center"
         style={{
-          width: 72,
-          height: 72,
-          background: active
-            ? interrupted
-              ? 'radial-gradient(circle at 35% 35%, #f87171, #dc2626)'
-              : 'radial-gradient(circle at 35% 35%, #a5b4fc, #6366f1, #3730a3)'
-            : 'radial-gradient(circle at 35% 35%, #374151, #111827)',
-          boxShadow: active
-            ? interrupted
-              ? '0 0 28px 8px rgba(239,68,68,0.55)'
-              : `0 0 ${20 + agentAmp * 40}px ${4 + agentAmp * 12}px rgba(99,102,241,0.55)`
-            : '0 2px 12px rgba(0,0,0,0.5)',
+          width: 56,
+          height: 56,
+          background: orbBg,
+          boxShadow: orbShadow,
           transform: `scale(${scale})`,
           transition: 'transform 60ms linear, box-shadow 60ms linear, background 0.4s ease',
         }}
@@ -207,17 +191,6 @@ function Orb({ active, interrupted, agentAmp }) {
   )
 }
 
-// ─── Status label ────────────────────────────────────────────────────────────
-
-function StatusLabel({ active, connected, interrupted }) {
-  if (interrupted) {
-    return <span className="text-red-400 text-xs font-semibold tracking-widest uppercase">⚡ Interrupted</span>
-  }
-  if (!connected) return <span className="text-gray-600 text-xs tracking-widest uppercase">Offline</span>
-  if (active) return <span className="text-indigo-400 text-xs font-semibold tracking-widest uppercase">Listening…</span>
-  return <span className="text-gray-500 text-xs tracking-widest uppercase">Ready</span>
-}
-
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
 export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [] }) {
@@ -226,7 +199,7 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
   const agentAmpSnap = agentAmpRef?.current ?? 0
   return (
     <aside
-      className="w-72 min-w-[260px] flex flex-col sticky top-0 h-screen overflow-hidden"
+      className="w-[25%] min-w-[260px] flex flex-col sticky top-0 h-screen overflow-hidden"
       style={{
         background: 'linear-gradient(180deg, #0d0d1a 0%, #0a0a14 100%)',
         borderLeft: '1px solid rgba(99,102,241,0.14)',
@@ -243,62 +216,64 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
         }}
       />
 
-      <div className="flex flex-col items-center gap-5 px-5 py-6 flex-1 min-h-0">
+      <div className="flex flex-col items-center gap-3 px-4 py-4 flex-1 min-h-0">
 
-        {/* Header */}
-        <div className="self-stretch flex items-center justify-between">
+        {/* Header row: two-column — identity + status | button */}
+        <div className="self-stretch flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
-            <img src="/icon.png" alt="" className="w-6 h-6 rounded-full flex-shrink-0" />
             <span className="text-gray-300 text-xs font-bold uppercase tracking-widest">
-              Argus Agent
+              Argus
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{
+                  background: connected ? '#34d399' : '#4b5563',
+                  boxShadow: connected ? '0 0 6px rgba(52,211,153,0.6)' : 'none',
+                  transition: 'all 0.4s',
+                }}
+              />
+              <span className="text-[10px] text-gray-500 uppercase tracking-wide">
+                {connected ? 'Online' : 'Offline'}
+              </span>
             </span>
           </div>
-          <span
-            className="text-xs font-mono px-2 py-0.5 rounded"
+          <button
+            onClick={onToggle}
+            className="px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide flex-shrink-0 active:scale-95"
             style={{
-              background: connected ? 'rgba(99,102,241,0.12)' : 'rgba(31,41,55,0.6)',
-              color:      connected ? '#a5b4fc'               : '#4b5563',
-              border:     `1px solid ${connected ? 'rgba(99,102,241,0.28)' : 'rgba(55,65,81,0.4)'}`,
-              transition: 'all 0.4s',
+              background: active
+                ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
+                : 'linear-gradient(135deg, #4338ca, #6366f1)',
+              boxShadow: active
+                ? '0 2px 8px rgba(220,38,38,0.3)'
+                : '0 2px 8px rgba(99,102,241,0.25)',
+              color: '#fff',
+              border: active
+                ? '1px solid rgba(220,38,38,0.5)'
+                : '1px solid rgba(99,102,241,0.5)',
+              transition: 'all 0.3s ease, transform 0.1s',
             }}
           >
-            {connected ? 'WS ●' : 'OFF'}
-          </span>
+            {active ? 'Disconnect' : 'Connect'}
+          </button>
         </div>
 
-        {/* Orb */}
-        <Orb active={active} interrupted={interrupted} agentAmp={agentAmpSnap} />
-
-        {/* Status */}
-        <StatusLabel active={active} connected={connected} interrupted={interrupted} />
-
-        {/* Divider */}
-        <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />
-
-        {/* Unified waveform */}
-        <div className="w-full flex-shrink-0">
-          <div
-            className="rounded-xl px-3 pt-3 pb-2"
-            style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: `1px solid ${interrupted ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.1)'}`,
-              transition: 'border-color 0.3s',
-            }}
-          >
-            <UnifiedWaveform
-              userAmpRef={userAmpRef}
-              agentAmpRef={agentAmpRef}
-              active={active}
-              interrupted={interrupted}
-            />
-            <SpeakerLegend active={active} interrupted={interrupted} />
-          </div>
+        {/* Orb + waveform */}
+        <Orb active={active} connected={connected} interrupted={interrupted} agentAmp={agentAmpSnap} />
+        <div className="w-full flex-shrink-0 px-1 -mt-1">
+          <UnifiedWaveform
+            userAmpRef={userAmpRef}
+            agentAmpRef={agentAmpRef}
+            active={active}
+            interrupted={interrupted}
+          />
         </div>
 
         {/* Interruption toast */}
         {interrupted && (
           <div
-            className="w-full rounded-lg px-3 py-2 flex items-center gap-2 animate-slide-up-fade flex-shrink-0"
+            className="w-full rounded-lg px-3 py-1.5 flex items-center gap-2 animate-slide-up-fade flex-shrink-0"
             style={{
               background: 'rgba(239,68,68,0.1)',
               border: '1px solid rgba(239,68,68,0.3)',
@@ -308,28 +283,10 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
           </div>
         )}
 
-        <TranscriptFeed messages={messages} />
+        {/* Divider */}
+        <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />
 
-        {/* Toggle button */}
-        <button
-          onClick={onToggle}
-          className="w-full py-3 rounded-xl text-sm font-bold tracking-wide flex-shrink-0 active:scale-95"
-          style={{
-            background: active
-              ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
-              : 'linear-gradient(135deg, #4338ca, #6366f1)',
-            boxShadow: active
-              ? '0 4px 18px rgba(220,38,38,0.4), inset 0 1px 0 rgba(255,255,255,0.08)'
-              : '0 4px 18px rgba(99,102,241,0.38), inset 0 1px 0 rgba(255,255,255,0.08)',
-            color: '#fff',
-            border: active
-              ? '1px solid rgba(220,38,38,0.5)'
-              : '1px solid rgba(99,102,241,0.5)',
-            transition: 'all 0.3s ease, transform 0.1s',
-          }}
-        >
-          {active ? 'Disconnect' : 'Connect'}
-        </button>
+        <TranscriptFeed messages={messages} />
 
       </div>
 
