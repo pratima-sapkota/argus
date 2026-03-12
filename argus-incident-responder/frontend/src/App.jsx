@@ -70,6 +70,19 @@ export default function App() {
     })
   }, [])
 
+  const handleTranscriptHistory = useCallback((transcripts) => {
+    const merged = []
+    for (const t of transcripts) {
+      const last = merged[merged.length - 1]
+      if (last && last.role === t.role) {
+        last.text += t.text
+      } else {
+        merged.push({ role: t.role, text: t.text, timestamp: Date.now() })
+      }
+    }
+    setMessages((prev) => [...merged, ...prev])
+  }, [])
+
   // Clear interrupted flag after animation
   useEffect(() => {
     if (!interrupted) return
@@ -83,6 +96,7 @@ export default function App() {
     onInterrupted: handleInterrupted,
     onUiUpdate: handleUiUpdate,
     onTranscript: handleTranscript,
+    onTranscriptHistory: handleTranscriptHistory,
   })
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback

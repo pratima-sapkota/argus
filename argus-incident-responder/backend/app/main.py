@@ -16,6 +16,7 @@ from app.incidents import (
     close_incident,
     create_incident,
     get_incident,
+    get_transcripts,
     list_incidents,
 )
 
@@ -103,6 +104,14 @@ async def get_incident_route(incident_id: str):
     if not incident:
         return JSONResponse(status_code=404, content={"error": "Incident not found"})
     return incident
+
+
+@app.get("/incidents/{incident_id}/transcripts")
+async def get_transcripts_route(incident_id: str):
+    incident = await get_incident(incident_id)
+    if not incident:
+        return JSONResponse(status_code=404, content={"error": "Incident not found"})
+    return await get_transcripts(incident_id)
 
 
 @app.patch("/incidents/{incident_id}")

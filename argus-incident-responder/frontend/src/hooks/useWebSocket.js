@@ -3,16 +3,18 @@ import { useRef, useState, useCallback } from 'react'
 const WS_URL = 'ws://localhost:8000/ws'
 const API_URL = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
 
-export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript }) {
+export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript, onTranscriptHistory }) {
   const wsRef = useRef(null)
   const incidentIdRef = useRef(null)
   const [connected, setConnected] = useState(false)
   const onTurnCompleteRef = useRef(onTurnComplete)
   const onInterruptedRef = useRef(onInterrupted)
   const onTranscriptRef = useRef(onTranscript)
+  const onTranscriptHistoryRef = useRef(onTranscriptHistory)
   onTurnCompleteRef.current = onTurnComplete
   onInterruptedRef.current = onInterrupted
   onTranscriptRef.current = onTranscript
+  onTranscriptHistoryRef.current = onTranscriptHistory
 
   const connect = useCallback(async () => {
     if (wsRef.current) return
@@ -29,8 +31,19 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
     const ws = new WebSocket(`${WS_URL}?incident_id=${incident.id}`)
     wsRef.current = ws
 
-    ws.onopen = () => {
+    ws.onopen = async () => {
       setConnected(true)
+      try {
+        const txRes = await fetch(`${API_URL}/incidents/${incident.id}/transcripts`)
+        if (txRes.ok) {
+          const transcripts = await txRes.json()
+          if (transcripts.length > 0) {
+            onTranscriptHistoryRef.current?.(transcripts)
+          }
+        }
+      } catch {
+        // non-critical — live transcripts still work
+      }
     }
 
     ws.onmessage = (event) => {

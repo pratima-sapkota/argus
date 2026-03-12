@@ -8,7 +8,9 @@ from google import genai
 logger = logging.getLogger(__name__)
 from google.genai import types
 
-from app.config import settings
+from google.cloud import firestore
+
+from app.config import db, settings
 from app.tools import (
     block_device,
     filter_network_logs,
@@ -232,6 +234,7 @@ class GeminiSession:
         self._cm = None
         self._session = None
         self.incident_id = incident_id
+        self._transcript_buffers: dict[str, str] = {}
 
     async def __aenter__(self) -> "GeminiSession":
         self._cm = _client.aio.live.connect(model=GEMINI_MODEL, config=_LIVE_CONFIG)
@@ -239,8 +242,31 @@ class GeminiSession:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.incident_id:
+            await self._flush_transcripts()
         if self._cm is not None:
             await self._cm.__aexit__(exc_type, exc_val, exc_tb)
+
+    def _buffer_transcript(self, role: str, text: str) -> None:
+        self._transcript_buffers[role] = self._transcript_buffers.get(role, "") + text
+
+    async def _flush_transcripts(self) -> None:
+        if not self.incident_id:
+            return
+        buffers = self._transcript_buffers
+        self._transcript_buffers = {}
+        col = db.collection("incidents").document(self.incident_id).collection("transcripts")
+        for role, text in buffers.items():
+            if not text:
+                continue
+            try:
+                await col.add({
+                    "role": role,
+                    "text": text,
+                    "timestamp": firestore.SERVER_TIMESTAMP,
+                })
+            except Exception as e:
+                logger.error("Failed to persist transcript: %s", e)
 
     async def send_audio(self, pcm16_base64: str) -> None:
         raw = base64.b64decode(pcm16_base64)
@@ -303,19 +329,23 @@ class GeminiSession:
                                 await websocket.send_text(
                                     json.dumps({"type": "transcript", "role": "agent", "text": text})
                                 )
+                                self._buffer_transcript("agent", text)
                         if msg.server_content and msg.server_content.input_transcription:
                             text = msg.server_content.input_transcription.text
                             if text:
                                 await websocket.send_text(
                                     json.dumps({"type": "transcript", "role": "user", "text": text})
                                 )
+                                self._buffer_transcript("user", text)
                     except Exception as e:
                         logger.error("Transcription handling error: %s", e, exc_info=True)
                     if msg.server_content and msg.server_content.interrupted:
                         await websocket.send_text(json.dumps({"type": "interrupted"}))
+                        asyncio.create_task(self._flush_transcripts())
                         break
                     if msg.server_content and msg.server_content.turn_complete:
                         await websocket.send_text(json.dumps({"type": "turn_complete"}))
+                        asyncio.create_task(self._flush_transcripts())
                         break
             except Exception as e:
                 logger.error("receive_audio_loop error: %s", e)

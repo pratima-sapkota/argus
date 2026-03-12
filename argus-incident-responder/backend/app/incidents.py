@@ -37,6 +37,17 @@ async def list_incidents(status: str | None = None, limit: int = 20) -> list[dic
     return results
 
 
+async def get_transcripts(incident_id: str) -> list[dict]:
+    query = db.collection("incidents").document(incident_id) \
+        .collection("transcripts").order_by("timestamp")
+    results = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        data["id"] = doc.id
+        results.append(_make_json_safe(data))
+    return results
+
+
 async def close_incident(incident_id: str, summary: str | None = None) -> dict | str:
     doc_ref = db.collection("incidents").document(incident_id)
     doc = await doc_ref.get()
