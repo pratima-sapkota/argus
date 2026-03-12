@@ -228,9 +228,10 @@ _TOOL_ACTION_MAP = {
 
 
 class GeminiSession:
-    def __init__(self):
+    def __init__(self, incident_id: str | None = None):
         self._cm = None
         self._session = None
+        self.incident_id = incident_id
 
     async def __aenter__(self) -> "GeminiSession":
         self._cm = _client.aio.live.connect(model=GEMINI_MODEL, config=_LIVE_CONFIG)

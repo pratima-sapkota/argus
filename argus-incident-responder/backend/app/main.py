@@ -3,14 +3,21 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from google.cloud.firestore_v1 import Increment
+from pydantic import BaseModel
 
 from app.config import db
 from app.gemini import GeminiSession
 from app.firewall import is_blocked
+from app.incidents import (
+    close_incident,
+    create_incident,
+    get_incident,
+    list_incidents,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,6 +33,15 @@ app.add_middleware(
 )
 
 _EXEMPT_PATHS = {"/health", "/simulate-traffic", "/docs", "/openapi.json"}
+_EXEMPT_PREFIXES = ("/incidents",)
+
+
+class CreateIncidentBody(BaseModel):
+    title: str
+
+
+class CloseIncidentBody(BaseModel):
+    summary: str | None = None
 
 
 @app.middleware("http")
@@ -34,7 +50,7 @@ async def firewall_middleware(request: Request, call_next):
         return await call_next(request)
     if request.method == "OPTIONS":
         return await call_next(request)
-    if request.url.path in _EXEMPT_PATHS:
+    if request.url.path in _EXEMPT_PATHS or request.url.path.startswith(_EXEMPT_PREFIXES):
         return await call_next(request)
     device_id = request.query_params.get("device_id") or request.client.host
     if await is_blocked(device_id):
@@ -71,12 +87,54 @@ async def simulate_traffic(request: Request, device_id: str | None = None):
     return {"device_id": resolved_id, "registered": True}
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    logger.info("Client connected")
+@app.post("/incidents", status_code=201)
+async def create_incident_route(body: CreateIncidentBody):
+    return await create_incident(body.title)
 
-    async with GeminiSession() as gemini:
+
+@app.get("/incidents")
+async def list_incidents_route(status: str | None = None):
+    return await list_incidents(status=status)
+
+
+@app.get("/incidents/{incident_id}")
+async def get_incident_route(incident_id: str):
+    incident = await get_incident(incident_id)
+    if not incident:
+        return JSONResponse(status_code=404, content={"error": "Incident not found"})
+    return incident
+
+
+@app.patch("/incidents/{incident_id}")
+async def close_incident_route(incident_id: str, body: CloseIncidentBody):
+    result = await close_incident(incident_id, summary=body.summary)
+    if result == "not_found":
+        return JSONResponse(status_code=404, content={"error": "Incident not found"})
+    if result == "already_closed":
+        return JSONResponse(status_code=409, content={"error": "Incident already closed"})
+    return result
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    incident_id: str = Query(default=None),
+):
+    if not incident_id:
+        await websocket.close(code=4400)
+        return
+    incident = await get_incident(incident_id)
+    if not incident:
+        await websocket.close(code=4404)
+        return
+    if incident.get("status") != "active":
+        await websocket.close(code=4403)
+        return
+
+    await websocket.accept()
+    logger.info("Client connected — incident %s", incident_id)
+
+    async with GeminiSession(incident_id=incident_id) as gemini:
 
         async def client_to_gemini():
             try:

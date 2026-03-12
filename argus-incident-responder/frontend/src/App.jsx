@@ -96,7 +96,7 @@ export default function App() {
       setHistory([])
       setMessages([])
       setCollapseOverrides({})
-      connect()
+      await connect()
       await startRecording()
       setActive(true)
     } else {

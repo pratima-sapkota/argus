@@ -1,9 +1,11 @@
 import { useRef, useState, useCallback } from 'react'
 
 const WS_URL = 'ws://localhost:8000/ws'
+const API_URL = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
 
 export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript }) {
   const wsRef = useRef(null)
+  const incidentIdRef = useRef(null)
   const [connected, setConnected] = useState(false)
   const onTurnCompleteRef = useRef(onTurnComplete)
   const onInterruptedRef = useRef(onInterrupted)
@@ -12,10 +14,19 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
   onInterruptedRef.current = onInterrupted
   onTranscriptRef.current = onTranscript
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current) return
 
-    const ws = new WebSocket(WS_URL)
+    const res = await fetch(`${API_URL}/incidents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: `Session ${new Date().toLocaleString()}` }),
+    })
+    if (!res.ok) throw new Error(`Failed to create incident: ${res.status}`)
+    const incident = await res.json()
+    incidentIdRef.current = incident.id
+
+    const ws = new WebSocket(`${WS_URL}?incident_id=${incident.id}`)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -70,5 +81,5 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
     )
   }, [])
 
-  return { connected, connect, disconnect, sendAudioChunk }
+  return { connected, connect, disconnect, sendAudioChunk, incidentIdRef }
 }
