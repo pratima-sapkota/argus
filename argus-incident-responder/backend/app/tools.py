@@ -23,11 +23,11 @@ def _human_bytes(n: int) -> str:
 
 
 def _serialize_row(row: dict) -> dict:
-    """Convert a BigQuery row dict to JSON-safe types."""
+    """Convert a BigQuery/Firestore row dict to JSON-safe types."""
     out = {}
     for k, v in row.items():
         if isinstance(v, (datetime.datetime, datetime.date)):
-            out[k] = v.strftime("%b %-d, %Y")
+            out[k] = v.isoformat()
         elif k == "bytes" and isinstance(v, int):
             out[k] = v
         else:
@@ -155,7 +155,7 @@ async def get_active_connections(limit: int = 20) -> list[dict]:
         async for doc in docs:
             data = doc.to_dict() or {}
             data["device_id"] = doc.id
-            result.append(data)
+            result.append(_serialize_row(data))
         return result if result else [{"info": "No active connections found."}]
     except Exception as e:
         logger.error("get_active_connections failed: %s", e)
@@ -187,7 +187,7 @@ async def get_connections_by_status(status: str, limit: int = 20) -> list[dict]:
         async for doc in docs:
             data = doc.to_dict() or {}
             data["device_id"] = doc.id
-            result.append(data)
+            result.append(_serialize_row(data))
         return result if result else [{"info": f"No connections with status '{status.upper()}' found."}]
     except Exception as e:
         logger.error("get_connections_by_status failed for status=%s: %s", status, e)
@@ -214,7 +214,7 @@ async def get_connection_details(device_id: str) -> list[dict]:
             return [{"info": f"Device '{device_id}' not found in active connections."}]
         data = doc.to_dict() or {}
         data["device_id"] = doc.id
-        return [data]
+        return [_serialize_row(data)]
     except Exception as e:
         logger.error("get_connection_details failed for %s: %s", device_id, e)
         return [{"error": str(e)}]
