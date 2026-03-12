@@ -10,7 +10,7 @@ from google.cloud.firestore_v1 import Increment
 
 from app.config import db
 from app.gemini import GeminiSession
-from app.state import blocked_ids
+from app.firewall import is_blocked
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ async def firewall_middleware(request: Request, call_next):
     if request.url.path in _EXEMPT_PATHS:
         return await call_next(request)
     device_id = request.query_params.get("device_id") or request.client.host
-    if device_id in blocked_ids:
+    if await is_blocked(device_id):
         return JSONResponse(
             status_code=403,
             content={"error": "Access Denied by Project Argus Firewall"},
@@ -53,7 +53,7 @@ async def health():
 @app.get("/simulate-traffic")
 async def simulate_traffic(request: Request, device_id: str | None = None):
     resolved_id = device_id or request.client.host
-    if resolved_id in blocked_ids:
+    if await is_blocked(resolved_id):
         return JSONResponse(
             status_code=403,
             content={"error": "Access Denied by Project Argus Firewall"},
