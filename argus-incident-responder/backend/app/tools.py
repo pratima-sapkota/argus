@@ -1,6 +1,7 @@
 """BigQuery tool functions exposed to Gemini via function calling."""
 
 import datetime
+import json
 import logging
 
 from google.cloud import bigquery
@@ -22,17 +23,19 @@ def _human_bytes(n: int) -> str:
     return f"{round(n)} TB"
 
 
-def _serialize_row(row: dict) -> dict:
-    """Convert a BigQuery/Firestore row dict to JSON-safe types."""
-    out = {}
-    for k, v in row.items():
-        if isinstance(v, (datetime.datetime, datetime.date)):
-            out[k] = v.isoformat()
-        elif k == "bytes" and isinstance(v, int):
-            out[k] = v
-        else:
-            out[k] = v
-    return out
+def _make_json_safe(obj):
+    """Recursively convert non-JSON-serializable types (Firestore timestamps, etc.)."""
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(item) for item in obj]
+    try:
+        json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        return str(obj)
 
 
 def get_high_severity_threats(limit: int = 5) -> list[dict]:
@@ -63,7 +66,7 @@ def get_high_severity_threats(limit: int = 5) -> list[dict]:
     )
     try:
         result = _bq_client.query(query, job_config=job_config).result()
-        return [_serialize_row(dict(row)) for row in result]
+        return [_make_json_safe(dict(row)) for row in result]
     except gcp_exceptions.GoogleCloudError as e:
         return [{"error": str(e)}]
 
@@ -130,7 +133,7 @@ def filter_network_logs(
     job_config = bigquery.QueryJobConfig(query_parameters=params)
     try:
         result = _bq_client.query(query, job_config=job_config).result()
-        return [_serialize_row(dict(row)) for row in result]
+        return [_make_json_safe(dict(row)) for row in result]
     except gcp_exceptions.GoogleCloudError as e:
         return [{"error": str(e)}]
 
@@ -155,7 +158,7 @@ async def get_active_connections(limit: int = 20) -> list[dict]:
         async for doc in docs:
             data = doc.to_dict() or {}
             data["device_id"] = doc.id
-            result.append(_serialize_row(data))
+            result.append(_make_json_safe(data))
         return result if result else [{"info": "No active connections found."}]
     except Exception as e:
         logger.error("get_active_connections failed: %s", e)
@@ -187,7 +190,7 @@ async def get_connections_by_status(status: str, limit: int = 20) -> list[dict]:
         async for doc in docs:
             data = doc.to_dict() or {}
             data["device_id"] = doc.id
-            result.append(_serialize_row(data))
+            result.append(_make_json_safe(data))
         return result if result else [{"info": f"No connections with status '{status.upper()}' found."}]
     except Exception as e:
         logger.error("get_connections_by_status failed for status=%s: %s", status, e)
@@ -214,7 +217,7 @@ async def get_connection_details(device_id: str) -> list[dict]:
             return [{"info": f"Device '{device_id}' not found in active connections."}]
         data = doc.to_dict() or {}
         data["device_id"] = doc.id
-        return [_serialize_row(data)]
+        return [_make_json_safe(data)]
     except Exception as e:
         logger.error("get_connection_details failed for %s: %s", device_id, e)
         return [{"error": str(e)}]
@@ -261,6 +264,6 @@ def get_traffic_by_port(port: int, limit: int = 5) -> list[dict]:
     )
     try:
         result = _bq_client.query(query, job_config=job_config).result()
-        return [_serialize_row(dict(row)) for row in result]
+        return [_make_json_safe(dict(row)) for row in result]
     except gcp_exceptions.GoogleCloudError as e:
         return [{"error": str(e)}]
