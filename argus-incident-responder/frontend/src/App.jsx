@@ -7,7 +7,7 @@ import { DeviceCard } from './components/DeviceCard'
 import { AgentPanel } from './components/AgentPanel'
 import { SectionHeader } from './components/SectionHeader'
 
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export default function App() {
   const [active, setActive] = useState(false)

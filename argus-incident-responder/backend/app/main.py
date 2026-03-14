@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Argus Incident Responder")
 
+# TODO(deploy): Replace allow_origins=["*"] with your Cloud Run frontend URL:
+#   gcloud run services describe argus-frontend --region=<REGION> --format='value(status.url)'
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

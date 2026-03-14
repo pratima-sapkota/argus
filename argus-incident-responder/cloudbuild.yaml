@@ -1,0 +1,102 @@
+substitutions:
+  _REGION: us-central1
+  _REPO: argus
+  _BACKEND_SERVICE: argus-backend
+  _FRONTEND_SERVICE: argus-frontend
+  _VITE_FIREBASE_API_KEY: ""
+  _VITE_FIREBASE_AUTH_DOMAIN: ""
+  _VITE_FIREBASE_PROJECT_ID: ""
+  _VITE_FIREBASE_APP_ID: ""
+
+steps:
+  # 1. Build and push backend image
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_BACKEND_SERVICE}:$COMMIT_SHA
+      - ./backend
+    id: build-backend
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_BACKEND_SERVICE}:$COMMIT_SHA
+    id: push-backend
+    waitFor: [build-backend]
+
+  # 2. Deploy backend to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_BACKEND_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_BACKEND_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+      - --service-account=${_BACKEND_SERVICE}-sa@$PROJECT_ID.iam.gserviceaccount.com
+    id: deploy-backend
+    waitFor: [push-backend]
+
+  # 3. Capture backend URL
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud run services describe ${_BACKEND_SERVICE} \
+          --region=${_REGION} \
+          --format='value(status.url)' > /workspace/backend_url.txt
+    id: get-backend-url
+    waitFor: [deploy-backend]
+
+  # 4. Build frontend with real backend URL
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND_URL=$(cat /workspace/backend_url.txt)
+        docker build \
+          --build-arg VITE_API_URL=$$BACKEND_URL \
+          --build-arg VITE_FIREBASE_API_KEY=${_VITE_FIREBASE_API_KEY} \
+          --build-arg VITE_FIREBASE_AUTH_DOMAIN=${_VITE_FIREBASE_AUTH_DOMAIN} \
+          --build-arg VITE_FIREBASE_PROJECT_ID=${_VITE_FIREBASE_PROJECT_ID} \
+          --build-arg VITE_FIREBASE_APP_ID=${_VITE_FIREBASE_APP_ID} \
+          -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_FRONTEND_SERVICE}:$COMMIT_SHA \
+          ./frontend
+    id: build-frontend
+    waitFor: [get-backend-url]
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_FRONTEND_SERVICE}:$COMMIT_SHA
+    id: push-frontend
+    waitFor: [build-frontend]
+
+  # 5. Deploy frontend to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_FRONTEND_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_FRONTEND_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+    id: deploy-frontend
+    waitFor: [push-frontend]
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_BACKEND_SERVICE}:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_FRONTEND_SERVICE}:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
