@@ -27,7 +27,6 @@ for ROLE in "${ROLES[@]}"; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="${ROLE}" \
-    --condition=None \
     --quiet
 done
 
