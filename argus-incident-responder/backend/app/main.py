@@ -15,6 +15,7 @@ from app.firewall import is_blocked
 from app.incidents import (
     close_incident,
     create_incident,
+    get_findings,
     get_incident,
     get_transcripts,
     list_incidents,
@@ -112,6 +113,14 @@ async def get_transcripts_route(incident_id: str):
     if not incident:
         return JSONResponse(status_code=404, content={"error": "Incident not found"})
     return await get_transcripts(incident_id)
+
+
+@app.get("/incidents/{incident_id}/findings")
+async def get_findings_route(incident_id: str):
+    incident = await get_incident(incident_id)
+    if not incident:
+        return JSONResponse(status_code=404, content={"error": "Incident not found"})
+    return await get_findings(incident_id)
 
 
 @app.patch("/incidents/{incident_id}")

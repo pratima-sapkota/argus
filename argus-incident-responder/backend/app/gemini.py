@@ -11,6 +11,7 @@ from google.genai import types
 from google.cloud import firestore
 
 from app.config import db, settings
+from app.incidents import add_finding
 from app.tools import (
     block_device,
     filter_network_logs,
@@ -228,6 +229,14 @@ _TOOL_ACTION_MAP = {
     "get_connection_details":     "RENDER_CONNECTIONS",
 }
 
+_ACTION_FINDING_TYPE = {
+    "RENDER_THREATS":       "threats",
+    "RENDER_TRAFFIC":       "traffic",
+    "RENDER_FILTERED_LOGS": "filteredLogs",
+    "DEVICE_BLOCKED":       "deviceBlocked",
+    "RENDER_CONNECTIONS":   "connections",
+}
+
 
 class GeminiSession:
     def __init__(self, incident_id: str | None = None):
@@ -316,6 +325,22 @@ class GeminiSession:
                                 await websocket.send_text(
                                     json.dumps({"type": "ui_update", "action": action, "payload": result})
                                 )
+                                if self.incident_id:
+                                    finding_type = _ACTION_FINDING_TYPE.get(action)
+                                    if finding_type:
+                                        task = asyncio.create_task(
+                                            add_finding(
+                                                incident_id=self.incident_id,
+                                                finding_type=finding_type,
+                                                action=action,
+                                                payload=result,
+                                                tool_name=fc.name,
+                                                tool_args=dict(args),
+                                            )
+                                        )
+                                        task.add_done_callback(
+                                            lambda t: t.exception() and logger.error("Failed to persist finding: %s", t.exception())
+                                        )
                         continue
                     if msg.data:
                         b64 = base64.b64encode(msg.data).decode()

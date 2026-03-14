@@ -3,7 +3,7 @@ import { useRef, useState, useCallback } from 'react'
 const WS_URL = 'ws://localhost:8000/ws'
 const API_URL = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
 
-export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript, onTranscriptHistory }) {
+export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript, onTranscriptHistory, onFindingsHistory }) {
   const wsRef = useRef(null)
   const incidentIdRef = useRef(null)
   const [connected, setConnected] = useState(false)
@@ -11,10 +11,12 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
   const onInterruptedRef = useRef(onInterrupted)
   const onTranscriptRef = useRef(onTranscript)
   const onTranscriptHistoryRef = useRef(onTranscriptHistory)
+  const onFindingsHistoryRef = useRef(onFindingsHistory)
   onTurnCompleteRef.current = onTurnComplete
   onInterruptedRef.current = onInterrupted
   onTranscriptRef.current = onTranscript
   onTranscriptHistoryRef.current = onTranscriptHistory
+  onFindingsHistoryRef.current = onFindingsHistory
 
   const connect = useCallback(async () => {
     if (wsRef.current) return
@@ -34,15 +36,24 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
     ws.onopen = async () => {
       setConnected(true)
       try {
-        const txRes = await fetch(`${API_URL}/incidents/${incident.id}/transcripts`)
+        const [txRes, fRes] = await Promise.all([
+          fetch(`${API_URL}/incidents/${incident.id}/transcripts`),
+          fetch(`${API_URL}/incidents/${incident.id}/findings`),
+        ])
         if (txRes.ok) {
           const transcripts = await txRes.json()
           if (transcripts.length > 0) {
             onTranscriptHistoryRef.current?.(transcripts)
           }
         }
+        if (fRes.ok) {
+          const findings = await fRes.json()
+          if (findings.length > 0) {
+            onFindingsHistoryRef.current?.(findings)
+          }
+        }
       } catch {
-        // non-critical — live transcripts still work
+        // non-critical — live data still works
       }
     }
 

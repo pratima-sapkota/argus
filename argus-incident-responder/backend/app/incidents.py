@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from google.cloud import firestore
+
 from app.config import db
 from app.tools import _make_json_safe
 
@@ -40,6 +42,46 @@ async def list_incidents(status: str | None = None, limit: int = 20) -> list[dic
 async def get_transcripts(incident_id: str) -> list[dict]:
     query = db.collection("incidents").document(incident_id) \
         .collection("transcripts").order_by("timestamp")
+    results = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        data["id"] = doc.id
+        results.append(_make_json_safe(data))
+    return results
+
+
+async def add_finding(
+    incident_id: str,
+    finding_type: str,
+    action: str,
+    payload: list,
+    tool_name: str,
+    tool_args: dict,
+) -> dict:
+    data = {
+        "type": finding_type,
+        "action": action,
+        "payload": payload,
+        "tool_name": tool_name,
+        "tool_args": tool_args,
+        "timestamp": firestore.SERVER_TIMESTAMP,
+    }
+    _, doc_ref = await (
+        db.collection("incidents")
+        .document(incident_id)
+        .collection("findings")
+        .add(data)
+    )
+    return {"id": doc_ref.id}
+
+
+async def get_findings(incident_id: str) -> list[dict]:
+    query = (
+        db.collection("incidents")
+        .document(incident_id)
+        .collection("findings")
+        .order_by("timestamp")
+    )
     results = []
     async for doc in query.stream():
         data = doc.to_dict()

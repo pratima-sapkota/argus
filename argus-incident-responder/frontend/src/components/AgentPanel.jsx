@@ -193,7 +193,7 @@ function Orb({ active, connected, interrupted, agentAmp }) {
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [] }) {
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive }) {
   // Derive a snapshot of agentAmp for the orb glow (read once per render, not per frame)
   // The orb uses inline style so React controls it — reads ref on each React render, which is fine.
   const agentAmpSnap = agentAmpRef?.current ?? 0
@@ -287,6 +287,60 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
         <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />
 
         <TranscriptFeed messages={messages} />
+
+        {/* Past Chats */}
+        {!active && pastChats.length > 0 && (
+          <>
+            <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />
+            <div className="w-full flex-shrink-0 flex flex-col gap-1 max-h-[200px] min-h-0">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
+                  Past Sessions
+                </span>
+                {viewingChatId && (
+                  <button
+                    onClick={onBackToLive}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 tracking-wide"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="overflow-y-auto transcript-scroll space-y-0.5">
+                {pastChats.map((chat) => {
+                  const isViewing = viewingChatId === chat.id
+                  const date = chat.created_at
+                    ? new Date(chat.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                    : ''
+                  return (
+                    <button
+                      key={chat.id}
+                      onClick={() => onViewChat(chat.id)}
+                      className="w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors"
+                      style={{
+                        background: isViewing ? 'rgba(99,102,241,0.15)' : 'transparent',
+                        border: isViewing ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{
+                            background: chat.status === 'active' ? '#34d399' : '#4b5563',
+                          }}
+                        />
+                        <span className="text-gray-400 truncate flex-1">{chat.title || 'Untitled'}</span>
+                      </div>
+                      {date && (
+                        <span className="text-gray-600 text-[10px] ml-3">{date}</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
 

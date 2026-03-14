@@ -7,12 +7,16 @@ import { DeviceCard } from './components/DeviceCard'
 import { AgentPanel } from './components/AgentPanel'
 import { SectionHeader } from './components/SectionHeader'
 
+const API_URL = 'http://localhost:8000'
+
 export default function App() {
   const [active, setActive] = useState(false)
   const [history, setHistory] = useState([])
   const [interrupted, setInterrupted] = useState(false)
   const [messages, setMessages] = useState([])
   const [collapseOverrides, setCollapseOverrides] = useState({})
+  const [pastChats, setPastChats] = useState([])
+  const [viewingChatId, setViewingChatId] = useState(null)
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
   // AgentPanel reads these refs via a stable object reference.
@@ -39,12 +43,15 @@ export default function App() {
     RENDER_THREATS: 'threats',
     RENDER_TRAFFIC: 'traffic',
     RENDER_FILTERED_LOGS: 'filteredLogs',
+    DEVICE_BLOCKED: 'deviceBlocked',
+    RENDER_CONNECTIONS: 'connections',
   }
 
   const handleUiUpdate = useCallback((msg) => {
     const type = ACTION_TYPE[msg.action]
     if (!type) return
-    setHistory((prev) => [{ type, rows: msg.payload, timestamp: Date.now() }, ...prev])
+    const ts = Date.now()
+    setHistory((prev) => [{ type, rows: msg.payload || [], id: `live-${ts}`, timestamp: ts }, ...prev])
   }, [])
 
   const handleInterrupted = useCallback(() => {
@@ -83,12 +90,77 @@ export default function App() {
     setMessages((prev) => [...merged, ...prev])
   }, [])
 
+  const handleFindingsHistory = useCallback((findings) => {
+    const entries = findings.map((f, i) => ({
+      type: f.type,
+      rows: f.payload || [],
+      id: f.id || `finding-${i}`,
+      timestamp: f.timestamp ? new Date(f.timestamp).getTime() : Date.now() + i,
+    }))
+    setHistory(entries.reverse())
+  }, [])
+
   // Clear interrupted flag after animation
   useEffect(() => {
     if (!interrupted) return
     const t = setTimeout(() => setInterrupted(false), 800)
     return () => clearTimeout(t)
   }, [interrupted])
+
+  const fetchPastChats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/incidents`)
+      if (res.ok) setPastChats(await res.json())
+    } catch { /* non-critical */ }
+  }, [])
+
+  useEffect(() => { fetchPastChats() }, [fetchPastChats])
+
+  const handleViewChat = useCallback(async (chatId) => {
+    if (active) return
+    setViewingChatId(chatId)
+    setCollapseOverrides({})
+    setMessages([])
+    setHistory([])
+    try {
+      const [txRes, fRes] = await Promise.all([
+        fetch(`${API_URL}/incidents/${chatId}/transcripts`),
+        fetch(`${API_URL}/incidents/${chatId}/findings`),
+      ])
+      if (txRes.ok) {
+        const transcripts = await txRes.json()
+        const merged = []
+        for (const t of transcripts) {
+          const last = merged[merged.length - 1]
+          if (last && last.role === t.role) {
+            last.text += t.text
+          } else {
+            merged.push({ role: t.role, text: t.text, timestamp: Date.now() })
+          }
+        }
+        setMessages(merged)
+      }
+      if (fRes.ok) {
+        const findings = await fRes.json()
+        const entries = findings.map((f, i) => ({
+          type: f.type,
+          rows: f.payload || [],
+          id: f.id || `finding-${i}`,
+          timestamp: f.timestamp ? new Date(f.timestamp).getTime() : Date.now() + i,
+        }))
+        setHistory(entries.reverse())
+      }
+    } catch (err) {
+      console.error('Failed to load past chat:', err)
+    }
+  }, [active])
+
+  const handleBackToLive = useCallback(() => {
+    setViewingChatId(null)
+    setMessages([])
+    setHistory([])
+    setCollapseOverrides({})
+  }, [])
 
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
@@ -97,6 +169,7 @@ export default function App() {
     onUiUpdate: handleUiUpdate,
     onTranscript: handleTranscript,
     onTranscriptHistory: handleTranscriptHistory,
+    onFindingsHistory: handleFindingsHistory,
   })
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback
@@ -107,6 +180,7 @@ export default function App() {
 
   const handleToggle = async () => {
     if (!active) {
+      setViewingChatId(null)
       setHistory([])
       setMessages([])
       setCollapseOverrides({})
@@ -118,6 +192,7 @@ export default function App() {
       closePlayback()
       disconnect()
       setActive(false)
+      fetchPastChats()
     }
   }
 
@@ -148,6 +223,19 @@ export default function App() {
           <span className="text-gray-600 text-xs font-mono">{now}</span>
         </div>
 
+        {viewingChatId && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg animate-slide-up-fade"
+            style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}
+          >
+            <span className="text-indigo-400 text-xs">
+              Viewing past session — {pastChats.find(c => c.id === viewingChatId)?.title || 'Unknown'}
+            </span>
+            <button onClick={handleBackToLive} className="text-gray-500 hover:text-gray-300 text-xs ml-auto">
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Data sections or empty state */}
         {!hasData ? (
           <div className="flex-1 flex items-center justify-center dot-grid rounded-xl">
@@ -158,28 +246,42 @@ export default function App() {
         ) : (
           <>
             {history.map((entry, index) => {
-              const expanded = collapseOverrides[entry.timestamp] ?? (index === 0)
+              const key = entry.id || `${entry.timestamp}-${index}`
+              const rows = entry.rows || []
+              const expanded = collapseOverrides[key] ?? (index === 0)
               const toggle = () =>
-                setCollapseOverrides((prev) => ({ ...prev, [entry.timestamp]: !expanded }))
+                setCollapseOverrides((prev) => ({ ...prev, [key]: !expanded }))
 
               const sectionProps = { expanded, onToggle: toggle }
 
               if (entry.type === 'threats') return (
-                <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="High Severity Threats" color="red" count={entry.rows.length} {...sectionProps} />
-                  {expanded && <NetworkTable rows={entry.rows} variant="threats" />}
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="High Severity Threats" color="red" count={rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={rows} variant="threats" />}
                 </section>
               )
               if (entry.type === 'filteredLogs') return (
-                <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="Filtered Network Logs" color="blue" count={entry.rows.length} {...sectionProps} />
-                  {expanded && <NetworkTable rows={entry.rows} variant="threats" />}
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Filtered Network Logs" color="blue" count={rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={rows} variant="threats" />}
                 </section>
               )
               if (entry.type === 'traffic') return (
-                <section key={entry.timestamp} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="Port Traffic Analysis" color="yellow" count={entry.rows.length} {...sectionProps} />
-                  {expanded && <NetworkTable rows={entry.rows} variant="traffic" />}
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Port Traffic Analysis" color="yellow" count={rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={rows} variant="traffic" />}
+                </section>
+              )
+              if (entry.type === 'connections') return (
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Connection Query Results" color="cyan" count={rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={rows} variant="threats" />}
+                </section>
+              )
+              if (entry.type === 'deviceBlocked') return (
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Device Blocked" color="red" count={rows.length} {...sectionProps} />
+                  {expanded && <NetworkTable rows={rows} variant="threats" />}
                 </section>
               )
               return null
@@ -208,6 +310,10 @@ export default function App() {
         agentAmpRef={agentAmpRef}
         interrupted={interrupted}
         messages={messages}
+        pastChats={pastChats}
+        viewingChatId={viewingChatId}
+        onViewChat={handleViewChat}
+        onBackToLive={handleBackToLive}
       />
     </div>
   )
