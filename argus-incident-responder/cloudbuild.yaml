@@ -43,7 +43,21 @@ steps:
     id: deploy-backend
     waitFor: [push-backend]
 
-  # 3. Capture backend URL
+  # 3. Allow public access to backend
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - add-iam-policy-binding
+      - ${_BACKEND_SERVICE}
+      - --region=${_REGION}
+      - --member=allUsers
+      - --role=roles/run.invoker
+    id: public-backend
+    waitFor: [deploy-backend]
+
+  # 4. Capture backend URL
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
@@ -53,9 +67,9 @@ steps:
           --region=${_REGION} \
           --format='value(status.url)' > /workspace/backend_url.txt
     id: get-backend-url
-    waitFor: [deploy-backend]
+    waitFor: [public-backend]
 
-  # 4. Build frontend with real backend URL
+  # 5. Build frontend with real backend URL
   - name: gcr.io/cloud-builders/docker
     entrypoint: bash
     args:
@@ -80,7 +94,7 @@ steps:
     id: push-frontend
     waitFor: [build-frontend]
 
-  # 5. Deploy frontend to Cloud Run
+  # 6. Deploy frontend to Cloud Run
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -94,6 +108,20 @@ steps:
       - --port=8080
     id: deploy-frontend
     waitFor: [push-frontend]
+
+  # 7. Allow public access to frontend
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - add-iam-policy-binding
+      - ${_FRONTEND_SERVICE}
+      - --region=${_REGION}
+      - --member=allUsers
+      - --role=roles/run.invoker
+    id: public-frontend
+    waitFor: [deploy-frontend]
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_BACKEND_SERVICE}:${_TAG}
