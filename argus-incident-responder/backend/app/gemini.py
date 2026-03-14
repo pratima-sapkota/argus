@@ -24,7 +24,11 @@ from app.tools import (
 
 GEMINI_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
-_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+_client = genai.Client(
+    vertexai=True,
+    project=settings.GOOGLE_CLOUD_PROJECT,
+    location=settings.GOOGLE_CLOUD_LOCATION,
+)
 
 _SYSTEM_INSTRUCTION = (
     "You are Argus, an elite, military-precise Security Operations Center (SOC) AI assistant. "

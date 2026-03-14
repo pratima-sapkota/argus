@@ -6,10 +6,10 @@ load_dotenv()
 
 class _Settings:
     def __init__(self):
-        self.GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
         self.GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
-        if not self.GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_API_KEY is not set. Check backend/.env")
+        self.GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        if not self.GOOGLE_CLOUD_PROJECT:
+            raise ValueError("GOOGLE_CLOUD_PROJECT is not set. Check backend/.env")
 
 
 settings = _Settings()
