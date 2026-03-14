@@ -22,7 +22,7 @@ from app.tools import (
     get_traffic_by_port,
 )
 
-GEMINI_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
+GEMINI_MODEL = "gemini-live-2.5-flash-native-audio"
 
 _client = genai.Client(
     vertexai=True,
