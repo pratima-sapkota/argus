@@ -155,7 +155,13 @@ Both the frontend and backend are containerized and deployed to **Google Cloud R
   - **Cloud Firestore** — Real-time operational database for incidents, transcripts, findings, and active device connections.
 - **Live Frontend URL:** https://argus-frontend-215980001921.us-central1.run.app
 - **Live Backend URL:** https://argus-backend-215980001921.us-central1.run.app
-- **GCP Proof Video:** `[Placeholder — screen recording to be added]`
+- **Code-level GCP proof (key files):**
+  - [`backend/app/gemini.py`](argus-incident-responder/backend/app/gemini.py) — Connects to the Gemini Live API via the `google-genai` SDK (`client.aio.live.connect()`), streams bidirectional audio, and dispatches function calls.
+  - [`backend/app/tools.py`](argus-incident-responder/backend/app/tools.py) — Executes parameterized queries against BigQuery (`bigquery.Client`) and writes device state to Cloud Firestore (`firestore.AsyncClient`).
+  - [`backend/app/config.py`](argus-incident-responder/backend/app/config.py) — Initializes the Google Cloud BigQuery and Firestore clients used throughout the backend.
+  - [`cloudbuild.yaml`](argus-incident-responder/cloudbuild.yaml) — Cloud Build pipeline that builds, pushes to Artifact Registry, and deploys to Cloud Run.
+  - [`scripts/setup_gcp.sh`](argus-incident-responder/scripts/setup_gcp.sh) — Enables required GCP APIs and creates the BigQuery dataset.
+  - [`scripts/generate_mock_data.py`](argus-incident-responder/scripts/generate_mock_data.py) — Seeds the BigQuery `argus_soc.network_logs` table with synthetic data.
 
 ## Demonstration Video
 
