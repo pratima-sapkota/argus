@@ -162,6 +162,21 @@ export default function App() {
     setCollapseOverrides({})
   }, [])
 
+  const handleClearAllSessions = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/incidents`, { method: 'DELETE' })
+      if (res.ok) {
+        setPastChats([])
+        setViewingChatId(null)
+        setMessages([])
+        setHistory([])
+        setCollapseOverrides({})
+      }
+    } catch (err) {
+      console.error('Failed to clear sessions:', err)
+    }
+  }, [])
+
   const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
     onAudioReceived,
     onTurnComplete: handleTurnComplete,
@@ -314,6 +329,7 @@ export default function App() {
         viewingChatId={viewingChatId}
         onViewChat={handleViewChat}
         onBackToLive={handleBackToLive}
+        onClearAllSessions={handleClearAllSessions}
       />
     </div>
   )

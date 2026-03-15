@@ -15,6 +15,7 @@ from app.firewall import is_blocked
 from app.incidents import (
     close_incident,
     create_incident,
+    delete_all_incidents,
     get_findings,
     get_incident,
     get_transcripts,
@@ -99,6 +100,12 @@ async def create_incident_route(body: CreateIncidentBody):
 @app.get("/incidents")
 async def list_incidents_route(status: str | None = None):
     return await list_incidents(status=status)
+
+
+@app.delete("/incidents", status_code=200)
+async def delete_all_incidents_route():
+    deleted = await delete_all_incidents()
+    return {"deleted": deleted}
 
 
 @app.get("/incidents/{incident_id}")

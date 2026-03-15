@@ -193,7 +193,7 @@ function Orb({ active, connected, interrupted, agentAmp }) {
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive }) {
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions }) {
   // Derive a snapshot of agentAmp for the orb glow (read once per render, not per frame)
   // The orb uses inline style so React controls it — reads ref on each React render, which is fine.
   const agentAmpSnap = agentAmpRef?.current ?? 0
@@ -270,18 +270,6 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
           />
         </div>
 
-        {/* Interruption toast */}
-        {interrupted && (
-          <div
-            className="w-full rounded-lg px-3 py-1.5 flex items-center gap-2 animate-slide-up-fade flex-shrink-0"
-            style={{
-              background: 'rgba(239,68,68,0.1)',
-              border: '1px solid rgba(239,68,68,0.3)',
-            }}
-          >
-            <span className="text-red-400 text-xs font-semibold">Speech interrupted by user</span>
-          </div>
-        )}
 
         {/* Divider */}
         <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />
@@ -297,14 +285,12 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
                 <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
                   Past Sessions
                 </span>
-                {viewingChatId && (
-                  <button
-                    onClick={onBackToLive}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 tracking-wide"
-                  >
-                    Clear
-                  </button>
-                )}
+                <button
+                  onClick={onClearAllSessions}
+                  className="text-[10px] text-red-400 hover:text-red-300 tracking-wide"
+                >
+                  Clear All
+                </button>
               </div>
               <div className="overflow-y-auto transcript-scroll space-y-0.5">
                 {pastChats.map((chat) => {

@@ -90,6 +90,18 @@ async def get_findings(incident_id: str) -> list[dict]:
     return results
 
 
+async def delete_all_incidents() -> int:
+    deleted = 0
+    async for doc in db.collection("incidents").stream():
+        for sub in ("transcripts", "findings"):
+            async for child in doc.reference.collection(sub).stream():
+                await child.reference.delete()
+                deleted += 1
+        await doc.reference.delete()
+        deleted += 1
+    return deleted
+
+
 async def close_incident(incident_id: str, summary: str | None = None) -> dict | str:
     doc_ref = db.collection("incidents").document(incident_id)
     doc = await doc_ref.get()
