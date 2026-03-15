@@ -128,4 +128,4 @@ images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_FRONTEND_SERVICE}:${_TAG}
 
 options:
-  logging: LEGACY
+  logging: CLOUD_LOGGING_ONLY
