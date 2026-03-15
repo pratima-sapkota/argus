@@ -34,8 +34,7 @@ Argus is a real-time, voice-driven Security Operations Center (SOC) AI agent. It
 
 ## Architecture Diagram
 
-<!-- TODO: Replace with actual architecture diagram image -->
-> `[Placeholder — architecture diagram to be added]`
+![Architecture Diagram](./docs/architecture/architecture.png)
 
 **High-level flow:**
 
