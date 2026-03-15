@@ -193,7 +193,15 @@ function Orb({ active, connected, interrupted, agentAmp }) {
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions }) {
+const STATE_STYLES = {
+  Offline:      { color: '#4b5563', shadow: 'none',                              pulse: false },
+  Listening:    { color: '#34d399', shadow: '0 0 6px rgba(52,211,153,0.6)',      pulse: false },
+  Thinking:     { color: '#facc15', shadow: '0 0 6px rgba(250,204,21,0.6)',      pulse: true  },
+  Speaking:     { color: '#818cf8', shadow: '0 0 6px rgba(129,140,248,0.6)',     pulse: false },
+  Reconnecting: { color: '#fb923c', shadow: '0 0 6px rgba(251,146,60,0.6)',     pulse: true  },
+}
+
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline' }) {
   // Derive a snapshot of agentAmp for the orb glow (read once per render, not per frame)
   // The orb uses inline style so React controls it — reads ref on each React render, which is fine.
   const agentAmpSnap = agentAmpRef?.current ?? 0
@@ -226,15 +234,15 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
             </span>
             <span className="flex items-center gap-1">
               <span
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0${STATE_STYLES[agentState]?.pulse ? ' animate-pulse' : ''}`}
                 style={{
-                  background: connected ? '#34d399' : '#4b5563',
-                  boxShadow: connected ? '0 0 6px rgba(52,211,153,0.6)' : 'none',
+                  background: STATE_STYLES[agentState]?.color ?? '#4b5563',
+                  boxShadow: STATE_STYLES[agentState]?.shadow ?? 'none',
                   transition: 'all 0.4s',
                 }}
               />
               <span className="text-[10px] text-gray-500 uppercase tracking-wide">
-                {connected ? 'Online' : 'Offline'}
+                {agentState}
               </span>
             </span>
           </div>

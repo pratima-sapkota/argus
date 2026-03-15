@@ -19,6 +19,7 @@ from app.tools import (
     get_connection_details,
     get_connections_by_status,
     get_high_severity_threats,
+    get_network_summary,
     get_traffic_by_port,
 )
 
@@ -173,6 +174,17 @@ _TOOL_DECLARATIONS = [
                 },
             },
             {
+                "name": "get_network_summary",
+                "description": (
+                    "Return an at-a-glance summary of the entire network dataset. "
+                    "Includes total event count, threat distribution (MALICIOUS / SUSPICIOUS / CLEAN counts), "
+                    "top 5 destination ports by hit count, and top 5 source IPs by hit count with their "
+                    "malicious hit count. Call this when the analyst asks for an overview, summary, "
+                    "threat landscape, or at-a-glance view of network activity."
+                ),
+                "parameters": {"type": "OBJECT", "properties": {}},
+            },
+            {
                 "name": "get_traffic_by_port",
                 "description": (
                     "Query network_logs for traffic targeting a specific destination port. "
@@ -215,18 +227,20 @@ _LIVE_CONFIG = types.LiveConnectConfig(
 
 _TOOL_MAP = {
     "get_high_severity_threats": get_high_severity_threats,
-    "get_traffic_by_port": get_traffic_by_port,
-    "filter_network_logs": filter_network_logs,
-    "block_device": block_device,
-    "get_active_connections": get_active_connections,
+    "get_traffic_by_port":       get_traffic_by_port,
+    "filter_network_logs":       filter_network_logs,
+    "get_network_summary":       get_network_summary,
+    "block_device":              block_device,
+    "get_active_connections":    get_active_connections,
     "get_connections_by_status": get_connections_by_status,
-    "get_connection_details": get_connection_details,
+    "get_connection_details":    get_connection_details,
 }
 
 _TOOL_ACTION_MAP = {
     "get_high_severity_threats":  "RENDER_THREATS",
     "get_traffic_by_port":        "RENDER_TRAFFIC",
     "filter_network_logs":        "RENDER_FILTERED_LOGS",
+    "get_network_summary":        "RENDER_SUMMARY",
     "block_device":               "DEVICE_BLOCKED",
     "get_active_connections":     "RENDER_CONNECTIONS",
     "get_connections_by_status":  "RENDER_CONNECTIONS",
@@ -237,6 +251,7 @@ _ACTION_FINDING_TYPE = {
     "RENDER_THREATS":       "threats",
     "RENDER_TRAFFIC":       "traffic",
     "RENDER_FILTERED_LOGS": "filteredLogs",
+    "RENDER_SUMMARY":       "summary",
     "DEVICE_BLOCKED":       "deviceBlocked",
     "RENDER_CONNECTIONS":   "connections",
 }
@@ -248,6 +263,23 @@ class GeminiSession:
         self._session = None
         self.incident_id = incident_id
         self._transcript_buffers: dict[str, str] = {}
+        self._reconnecting: bool = False
+        self._client_gone: bool = False
+        self._max_retries = 5
+        self._base_delay = 1.0
+        self._max_delay = 16.0
+
+    async def _safe_send(self, websocket, data: str) -> bool:
+        """Send text to client websocket. Returns False if client disconnected."""
+        if self._client_gone:
+            return False
+        try:
+            await websocket.send_text(data)
+            return True
+        except Exception:
+            self._client_gone = True
+            logger.info("Client websocket gone, stopping sends")
+            return False
 
     async def __aenter__(self) -> "GeminiSession":
         self._cm = _client.aio.live.connect(model=GEMINI_MODEL, config=_LIVE_CONFIG)
@@ -281,16 +313,56 @@ class GeminiSession:
             except Exception as e:
                 logger.error("Failed to persist transcript: %s", e)
 
+    async def _reconnect(self, websocket) -> bool:
+        if self._client_gone:
+            return False
+        self._reconnecting = True
+        await self._safe_send(websocket, json.dumps({"type": "agent_state", "state": "reconnecting"}))
+        delay = self._base_delay
+
+        for attempt in range(1, self._max_retries + 1):
+            logger.warning("Reconnect attempt %d/%d (delay %.1fs)", attempt, self._max_retries, delay)
+            await asyncio.sleep(delay)
+
+            try:
+                if self._cm is not None:
+                    try:
+                        await self._cm.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+
+                self._cm = _client.aio.live.connect(model=GEMINI_MODEL, config=_LIVE_CONFIG)
+                self._session = await self._cm.__aenter__()
+                self._reconnecting = False
+                await self._safe_send(websocket, json.dumps({"type": "agent_state", "state": "listening"}))
+                logger.info("Reconnected successfully on attempt %d", attempt)
+                return True
+            except Exception as e:
+                logger.error("Reconnect attempt %d failed: %s", attempt, e)
+                delay = min(delay * 2, self._max_delay)
+
+        self._reconnecting = False
+        await self._safe_send(websocket, json.dumps({"type": "agent_state", "state": "offline"}))
+        logger.error("All %d reconnect attempts exhausted", self._max_retries)
+        return False
+
     async def send_audio(self, pcm16_base64: str) -> None:
+        if self._reconnecting or self._session is None:
+            return
         raw = base64.b64decode(pcm16_base64)
         await self._session.send_realtime_input(
             audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000")
         )
 
     async def receive_audio_loop(self, websocket) -> None:
+        consecutive_errors = 0
         while True:
+            if self._client_gone:
+                logger.info("Client gone, exiting receive loop")
+                return
             try:
                 async for msg in self._session.receive():
+                    consecutive_errors = 0
                     logger.info(
                         "MSG: tool_call=%s data=%s server_content=%s",
                         bool(msg.tool_call), bool(msg.data), bool(msg.server_content),
@@ -312,7 +384,10 @@ class GeminiSession:
                                 elif asyncio.iscoroutinefunction(fn):
                                     result = await fn(**args)
                                 else:
-                                    result = fn(**args)
+                                    loop = asyncio.get_event_loop()
+                                    result = await loop.run_in_executor(
+                                        None, lambda f=fn, a=args: f(**a)
+                                    )
                             except Exception as e:
                                 logger.error("Tool %s raised: %s", fc.name, e)
                                 result = [{"error": str(e)}]
@@ -326,7 +401,7 @@ class GeminiSession:
                             _has_error = len(result) == 1 and "error" in result[0]
                             action = _TOOL_ACTION_MAP.get(fc.name)
                             if action and not _has_error:
-                                await websocket.send_text(
+                                await self._safe_send(websocket,
                                     json.dumps({"type": "ui_update", "action": action, "payload": result})
                                 )
                                 if self.incident_id:
@@ -348,36 +423,41 @@ class GeminiSession:
                         continue
                     if msg.data:
                         b64 = base64.b64encode(msg.data).decode()
-                        await websocket.send_text(
+                        await self._safe_send(websocket,
                             json.dumps({"type": "audio", "data": b64})
                         )
                     try:
                         if msg.server_content and msg.server_content.output_transcription:
                             text = msg.server_content.output_transcription.text
                             if text:
-                                await websocket.send_text(
+                                await self._safe_send(websocket,
                                     json.dumps({"type": "transcript", "role": "agent", "text": text})
                                 )
                                 self._buffer_transcript("agent", text)
                         if msg.server_content and msg.server_content.input_transcription:
                             text = msg.server_content.input_transcription.text
                             if text:
-                                await websocket.send_text(
+                                await self._safe_send(websocket,
                                     json.dumps({"type": "transcript", "role": "user", "text": text})
                                 )
                                 self._buffer_transcript("user", text)
                     except Exception as e:
                         logger.error("Transcription handling error: %s", e, exc_info=True)
                     if msg.server_content and msg.server_content.interrupted:
-                        await websocket.send_text(json.dumps({"type": "interrupted"}))
+                        await self._safe_send(websocket, json.dumps({"type": "interrupted"}))
                         asyncio.create_task(self._flush_transcripts())
                         break
                     if msg.server_content and msg.server_content.turn_complete:
-                        await websocket.send_text(json.dumps({"type": "turn_complete"}))
+                        await self._safe_send(websocket, json.dumps({"type": "turn_complete"}))
                         asyncio.create_task(self._flush_transcripts())
                         break
             except Exception as e:
-                logger.error("receive_audio_loop error: %s", e)
-                # Don't break — a transient error should not kill the session.
-                # The outer while loop will restart the receive iterator.
+                consecutive_errors += 1
+                logger.error("receive_audio_loop error (%d consecutive): %s", consecutive_errors, e)
+                if self._client_gone:
+                    return
+                if consecutive_errors >= 3:
+                    if not await self._reconnect(websocket):
+                        return
+                    consecutive_errors = 0
                 continue

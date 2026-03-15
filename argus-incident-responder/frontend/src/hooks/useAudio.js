@@ -42,7 +42,7 @@ const RMS_THRESHOLD = 0.15      // ~-16 dBFS — filters ambient noise, requires
 const SPEECH_COOLDOWN_MS = 300  // minimum ms between onSpeechStart fires
 const SPEECH_CONFIRM_FRAMES = 6 // consecutive frames above threshold before firing
 
-export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmplitude }) {
+export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmplitude, onAgentSpeakingStart, onAgentSpeakingEnd }) {
   // Capture refs
   const captureCtxRef = useRef(null)
   const processorRef = useRef(null)
@@ -175,15 +175,21 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
     const now = playCtx.currentTime
     const startAt = Math.max(now + LOOKAHEAD, nextStartTimeRef.current)
     console.log('[audio] scheduling packet — ctx.state:', playCtx.state, 'now:', now.toFixed(3), 'startAt:', startAt.toFixed(3), 'samples:', float32.length)
-    agentSpeakingRef.current = true
+    if (!agentSpeakingRef.current) {
+      agentSpeakingRef.current = true
+      onAgentSpeakingStart?.()
+    }
     source.start(startAt)
     activeSourcesRef.current.add(source)
     source.onended = () => {
       activeSourcesRef.current.delete(source)
-      if (activeSourcesRef.current.size === 0) agentSpeakingRef.current = false
+      if (activeSourcesRef.current.size === 0) {
+        agentSpeakingRef.current = false
+        onAgentSpeakingEnd?.()
+      }
     }
     nextStartTimeRef.current = startAt + buffer.duration
-  }, [onAgentAmplitude])
+  }, [onAgentAmplitude, onAgentSpeakingStart, onAgentSpeakingEnd])
 
   const stopPlayback = useCallback(() => {
     // Only interrupt if the agent is actually speaking — don't gate on noise
@@ -191,12 +197,13 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
     if (!agentSpeakingRef.current) return
     isInterruptedRef.current = true
     agentSpeakingRef.current = false
+    onAgentSpeakingEnd?.()
     activeSourcesRef.current.forEach((source) => {
       try { source.stop() } catch { /* already ended */ }
     })
     activeSourcesRef.current.clear()
     nextStartTimeRef.current = 0
-  }, [])
+  }, [onAgentSpeakingEnd])
 
   const clearInterrupt = useCallback(() => {
     isInterruptedRef.current = false

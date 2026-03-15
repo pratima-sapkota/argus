@@ -234,6 +234,61 @@ async def block_device(device_id: str) -> list[dict]:
         return [{"error": str(e)}]
 
 
+def get_network_summary() -> list[dict]:
+    """Return an at-a-glance summary of the entire network_logs dataset.
+
+    Runs three aggregate BigQuery queries in sequence:
+      1. Threat distribution — COUNT(*) per threat_intel_status.
+      2. Top 5 destination ports — by hit count and total bytes.
+      3. Top 5 source IPs — by hit count, with malicious hit count.
+
+    Returns:
+        A single-element list containing a dict with keys
+        threat_distribution, top_ports, top_source_ips, and total_events.
+        On error, returns [{"error": "<message>"}].
+    """
+    try:
+        dist_rows = _bq_client.query("""
+            SELECT threat_intel_status AS status, COUNT(*) AS count
+            FROM argus_soc.network_logs
+            GROUP BY threat_intel_status
+            ORDER BY count DESC
+        """).result()
+        threat_distribution = [_make_json_safe(dict(r)) for r in dist_rows]
+        total_events = sum(r["count"] for r in threat_distribution)
+
+        port_rows = _bq_client.query("""
+            SELECT dest_port AS port,
+                   COUNT(*)   AS total_hits,
+                   SUM(bytes) AS total_bytes
+            FROM argus_soc.network_logs
+            GROUP BY dest_port
+            ORDER BY total_hits DESC
+            LIMIT 5
+        """).result()
+        top_ports = [_make_json_safe(dict(r)) for r in port_rows]
+
+        ip_rows = _bq_client.query("""
+            SELECT src_ip,
+                   COUNT(*) AS total_hits,
+                   COUNTIF(threat_intel_status = 'MALICIOUS') AS malicious_hits
+            FROM argus_soc.network_logs
+            GROUP BY src_ip
+            ORDER BY total_hits DESC
+            LIMIT 5
+        """).result()
+        top_source_ips = [_make_json_safe(dict(r)) for r in ip_rows]
+
+        return [{
+            "total_events": total_events,
+            "threat_distribution": threat_distribution,
+            "top_ports": top_ports,
+            "top_source_ips": top_source_ips,
+        }]
+    except gcp_exceptions.GoogleCloudError as e:
+        return [{"error": str(e)}]
+
+
 def get_traffic_by_port(port: int, limit: int = 5) -> list[dict]:
     """Query network_logs for traffic targeting a specific destination port.
 

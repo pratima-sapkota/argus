@@ -3,6 +3,7 @@ import { useAudio } from './hooks/useAudio'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useActiveConnections } from './hooks/useActiveConnections'
 import { NetworkTable } from './components/NetworkTable'
+import { SummaryChart } from './components/SummaryChart'
 import { DeviceCard } from './components/DeviceCard'
 import { AgentPanel } from './components/AgentPanel'
 import { SectionHeader } from './components/SectionHeader'
@@ -17,6 +18,9 @@ export default function App() {
   const [collapseOverrides, setCollapseOverrides] = useState({})
   const [pastChats, setPastChats] = useState([])
   const [viewingChatId, setViewingChatId] = useState(null)
+  const [agentSpeaking, setAgentSpeaking] = useState(false)
+  const [thinking, setThinking] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
   // AgentPanel reads these refs via a stable object reference.
@@ -34,15 +38,26 @@ export default function App() {
 
   const { onAudioReceived, startRecording, stopRecording, stopPlayback, clearInterrupt, closePlayback } = useAudio({
     onChunk: useCallback((b64) => sendChunkRef.current?.(b64), []),
-    onSpeechStart: useCallback(() => stopPlaybackRef.current?.(), []),
+    onSpeechStart: useCallback(() => {
+      stopPlaybackRef.current?.()
+      setThinking(true)
+    }, []),
     onUserAmplitude: useCallback((amp) => { userAmpRef.current = amp }, []),
     onAgentAmplitude: useCallback((amp) => { agentAmpRef.current = amp }, []),
+    onAgentSpeakingStart: useCallback(() => {
+      setAgentSpeaking(true)
+      setThinking(false)
+    }, []),
+    onAgentSpeakingEnd: useCallback(() => {
+      setAgentSpeaking(false)
+    }, []),
   })
 
   const ACTION_TYPE = {
     RENDER_THREATS: 'threats',
     RENDER_TRAFFIC: 'traffic',
     RENDER_FILTERED_LOGS: 'filteredLogs',
+    RENDER_SUMMARY: 'summary',
     DEVICE_BLOCKED: 'deviceBlocked',
     RENDER_CONNECTIONS: 'connections',
   }
@@ -62,6 +77,7 @@ export default function App() {
 
   const handleTurnComplete = useCallback(() => {
     clearInterrupt()  // ensure gate is open for the next turn
+    setThinking(false)
   }, [clearInterrupt])
 
   const handleTranscript = useCallback(({ role, text }) => {
@@ -88,6 +104,14 @@ export default function App() {
       }
     }
     setMessages((prev) => [...merged, ...prev])
+  }, [])
+
+  const handleAgentState = useCallback((state) => {
+    if (state === 'reconnecting') {
+      setReconnecting(true)
+    } else {
+      setReconnecting(false)
+    }
   }, [])
 
   const handleFindingsHistory = useCallback((findings) => {
@@ -185,6 +209,7 @@ export default function App() {
     onTranscript: handleTranscript,
     onTranscriptHistory: handleTranscriptHistory,
     onFindingsHistory: handleFindingsHistory,
+    onAgentState: handleAgentState,
   })
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback
@@ -210,6 +235,16 @@ export default function App() {
       fetchPastChats()
     }
   }
+
+  const agentState = reconnecting
+    ? 'Reconnecting'
+    : !connected
+      ? 'Offline'
+      : agentSpeaking
+        ? 'Speaking'
+        : thinking
+          ? 'Thinking'
+          : 'Listening'
 
   const connections = useActiveConnections()
 
@@ -269,6 +304,12 @@ export default function App() {
 
               const sectionProps = { expanded, onToggle: toggle }
 
+              if (entry.type === 'summary') return (
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Network Overview" color="indigo" count={null} {...sectionProps} />
+                  {expanded && <SummaryChart data={rows} />}
+                </section>
+              )
               if (entry.type === 'threats') return (
                 <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
                   <SectionHeader title="High Severity Threats" color="red" count={rows.length} {...sectionProps} />
@@ -330,6 +371,7 @@ export default function App() {
         onViewChat={handleViewChat}
         onBackToLive={handleBackToLive}
         onClearAllSessions={handleClearAllSessions}
+        agentState={agentState}
       />
     </div>
   )
