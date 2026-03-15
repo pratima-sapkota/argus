@@ -225,7 +225,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-950 flex">
       {/* ── Left panel (80%) ── */}
-      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 dot-grid">
 
         {/* Header bar */}
         <div className="flex items-center justify-between border-b border-gray-800 pb-4">
@@ -253,7 +253,7 @@ export default function App() {
 
         {/* Data sections or empty state */}
         {!hasData ? (
-          <div className="flex-1 flex items-center justify-center dot-grid rounded-xl">
+          <div className="flex-1 flex items-center justify-center">
             <p className="text-gray-600 text-sm tracking-widest uppercase">
               Monitoring network…
             </p>
