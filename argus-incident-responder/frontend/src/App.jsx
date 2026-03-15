@@ -337,7 +337,17 @@ export default function App() {
               if (entry.type === 'deviceBlocked') return (
                 <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
                   <SectionHeader title="Device Blocked" color="red" count={rows.length} {...sectionProps} />
-                  {expanded && <NetworkTable rows={rows} variant="threats" />}
+                  {expanded && (
+                    <div className="flex flex-col gap-2 mt-2">
+                      {rows.map((r, i) => (
+                        <div key={i} className="flex items-center gap-3 rounded-lg border border-red-500 bg-red-950 px-4 py-3">
+                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                          <span className="text-red-300 text-sm font-mono">{r.blocked}</span>
+                          <span className="text-red-500 text-xs uppercase tracking-widest ml-auto">blocked</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
               )
               return null
