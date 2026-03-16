@@ -8,6 +8,11 @@ class _Settings:
     def __init__(self):
         self.GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        self.ALLOWED_ORIGINS = [
+            o.strip()
+            for o in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+            if o.strip()
+        ]
         if not self.GOOGLE_CLOUD_PROJECT:
             raise ValueError("GOOGLE_CLOUD_PROJECT is not set. Check backend/.env")
 

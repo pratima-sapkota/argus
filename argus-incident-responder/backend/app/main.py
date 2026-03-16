@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from google.cloud.firestore_v1 import Increment
 from pydantic import BaseModel
 
-from app.config import db
+from app.config import db, settings
 from app.gemini import GeminiSession
 from app.firewall import is_blocked
 from app.incidents import (
@@ -27,11 +27,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Argus Incident Responder")
 
-# TODO(deploy): Replace allow_origins=["*"] with your Cloud Run frontend URL:
-#   gcloud run services describe argus-frontend --region=<REGION> --format='value(status.url)'
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
