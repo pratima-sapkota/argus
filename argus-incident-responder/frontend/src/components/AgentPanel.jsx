@@ -232,6 +232,23 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
     reader.readAsDataURL(file)
   }, [onImageSend])
 
+  useEffect(() => {
+    if (!active) return
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          processFile(item.getAsFile())
+          return
+        }
+      }
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [active, processFile])
+
   const handleFileSelect = useCallback((e) => {
     processFile(e.target.files?.[0])
     e.target.value = ''
