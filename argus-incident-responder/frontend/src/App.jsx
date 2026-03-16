@@ -96,8 +96,13 @@ export default function App() {
   const handleTranscriptHistory = useCallback((transcripts) => {
     const merged = []
     for (const t of transcripts) {
+      if (t.image) {
+        merged.push({ role: t.role, text: t.text || '', image: `data:${t.mime_type};base64,${t.image}`, timestamp: Date.now() })
+        continue
+      }
+      if (!t.text) continue
       const last = merged[merged.length - 1]
-      if (last && last.role === t.role) {
+      if (last && last.role === t.role && !last.image) {
         last.text += t.text
       } else {
         merged.push({ role: t.role, text: t.text, timestamp: Date.now() })
@@ -155,8 +160,13 @@ export default function App() {
         const transcripts = await txRes.json()
         const merged = []
         for (const t of transcripts) {
+          if (t.image) {
+            merged.push({ role: t.role, text: t.text || '', image: `data:${t.mime_type};base64,${t.image}`, timestamp: Date.now() })
+            continue
+          }
+          if (!t.text) continue
           const last = merged[merged.length - 1]
-          if (last && last.role === t.role) {
+          if (last && last.role === t.role && !last.image) {
             last.text += t.text
           } else {
             merged.push({ role: t.role, text: t.text, timestamp: Date.now() })
@@ -201,7 +211,7 @@ export default function App() {
     }
   }, [])
 
-  const { connected, connect, disconnect, sendAudioChunk } = useWebSocket({
+  const { connected, connect, disconnect, sendAudioChunk, sendImage } = useWebSocket({
     onAudioReceived,
     onTurnComplete: handleTurnComplete,
     onInterrupted: handleInterrupted,
@@ -211,6 +221,14 @@ export default function App() {
     onFindingsHistory: handleFindingsHistory,
     onAgentState: handleAgentState,
   })
+
+  const handleImageSend = useCallback((base64Data, mimeType) => {
+    sendImage(base64Data, mimeType)
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', image: `data:${mimeType};base64,${base64Data}`, timestamp: Date.now() },
+    ])
+  }, [sendImage])
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback
   stopPlaybackRef.current = stopPlayback
@@ -382,6 +400,7 @@ export default function App() {
         onBackToLive={handleBackToLive}
         onClearAllSessions={handleClearAllSessions}
         agentState={agentState}
+        onImageSend={handleImageSend}
       />
     </div>
   )

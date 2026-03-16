@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useState } from 'react'
 import { TranscriptFeed } from './TranscriptFeed'
 
 // ─── Unified waveform ────────────────────────────────────────────────────────
@@ -201,10 +201,23 @@ const STATE_STYLES = {
   Reconnecting: { color: '#fb923c', shadow: '0 0 6px rgba(251,146,60,0.6)',     pulse: true  },
 }
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline' }) {
-  // Derive a snapshot of agentAmp for the orb glow (read once per render, not per frame)
-  // The orb uses inline style so React controls it — reads ref on each React render, which is fine.
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline', onImageSend }) {
   const agentAmpSnap = agentAmpRef?.current ?? 0
+  const fileInputRef = useRef(null)
+
+  const handleFileSelect = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result
+      const [header, base64Data] = dataUrl.split(',')
+      const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg'
+      onImageSend?.(base64Data, mimeType)
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }, [onImageSend])
   return (
     <aside
       className="w-[25%] min-w-[260px] flex flex-col sticky top-0 h-screen overflow-hidden"
@@ -278,6 +291,35 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
           />
         </div>
 
+
+        {/* Image upload */}
+        {active && (
+          <div className="w-full flex justify-center flex-shrink-0">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] text-gray-400 hover:text-gray-200 transition-colors"
+              style={{
+                background: 'rgba(99,102,241,0.08)',
+                border: '1px solid rgba(99,102,241,0.15)',
+              }}
+              title="Upload image for analysis"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+              Upload Image
+            </button>
+          </div>
+        )}
 
         {/* Divider */}
         <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />

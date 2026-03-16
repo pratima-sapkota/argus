@@ -354,6 +354,45 @@ class GeminiSession:
             audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000")
         )
 
+    async def send_image(self, image_base64: str, mime_type: str = "image/jpeg") -> None:
+        if self._reconnecting or self._session is None:
+            return
+        raw = base64.b64decode(image_base64)
+        try:
+            response = await _client.aio.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    types.Part.from_bytes(data=raw, mime_type=mime_type),
+                    "Describe this image in detail for a SOC analyst. Focus on any security-relevant details like alerts, log entries, IP addresses, error messages, network diagrams, or suspicious indicators.",
+                ],
+            )
+            description = response.text or "Could not analyze the image."
+        except Exception as e:
+            logger.error("Image analysis failed: %s", e)
+            description = f"Image analysis failed: {e}"
+        if self.incident_id:
+            col = db.collection("incidents").document(self.incident_id).collection("transcripts")
+            try:
+                await col.add({
+                    "role": "user",
+                    "text": "",
+                    "image": image_base64,
+                    "mime_type": mime_type,
+                    "timestamp": firestore.SERVER_TIMESTAMP,
+                })
+            except Exception as e:
+                logger.error("Failed to persist image transcript: %s", e)
+
+        await self._session.send_client_content(
+            turns=types.Content(
+                role="user",
+                parts=[types.Part.from_text(
+                    text=f"The analyst uploaded an image. Here is the analysis:\n\n{description}\n\nSummarize the key findings from this image to the analyst."
+                )],
+            ),
+            turn_complete=True,
+        )
+
     async def receive_audio_loop(self, websocket) -> None:
         consecutive_errors = 0
         while True:

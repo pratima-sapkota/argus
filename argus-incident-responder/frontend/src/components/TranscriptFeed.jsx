@@ -41,6 +41,14 @@ export function TranscriptFeed({ messages }) {
                   color: '#a7f3d0',
                 }}
               >
+                {msg.image && (
+                  <img
+                    src={msg.image}
+                    alt="Uploaded"
+                    className="rounded mb-1.5"
+                    style={{ maxWidth: 200, maxHeight: 200, objectFit: 'contain' }}
+                  />
+                )}
                 {msg.text}
               </div>
             </div>

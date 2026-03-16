@@ -170,6 +170,11 @@ async def websocket_endpoint(
                         for chunk in msg.get("media_chunks", []):
                             if chunk.get("data"):
                                 await gemini.send_audio(chunk["data"])
+                    elif msg.get("type") == "image_input":
+                        data = msg.get("data")
+                        mime_type = msg.get("mime_type", "image/jpeg")
+                        if data:
+                            await gemini.send_image(data, mime_type)
             except WebSocketDisconnect:
                 logger.info("Client disconnected")
             except Exception as e:

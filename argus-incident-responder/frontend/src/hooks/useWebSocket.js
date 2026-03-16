@@ -109,5 +109,16 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
     )
   }, [])
 
-  return { connected, connect, disconnect, sendAudioChunk, incidentIdRef }
+  const sendImage = useCallback((base64Data, mimeType = 'image/jpeg') => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    wsRef.current.send(
+      JSON.stringify({
+        type: 'image_input',
+        data: base64Data,
+        mime_type: mimeType,
+      })
+    )
+  }, [])
+
+  return { connected, connect, disconnect, sendAudioChunk, sendImage, incidentIdRef }
 }
