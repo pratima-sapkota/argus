@@ -66,8 +66,11 @@ export default function App() {
   const handleUiUpdate = useCallback((msg) => {
     const type = ACTION_TYPE[msg.action]
     if (!type) return
+    const rows = msg.payload || []
+    const dataRows = rows.filter((r) => !r.info && !r.error)
+    if (dataRows.length === 0) return
     const ts = Date.now()
-    setHistory((prev) => [{ type, rows: msg.payload || [], id: `live-${ts}`, timestamp: ts }, ...prev])
+    setHistory((prev) => [{ type, rows: dataRows, id: `live-${ts}`, timestamp: ts }, ...prev])
   }, [])
 
   const handleInterrupted = useCallback(() => {
@@ -126,12 +129,14 @@ export default function App() {
   }, [])
 
   const handleFindingsHistory = useCallback((findings) => {
-    const entries = findings.map((f, i) => ({
-      type: f.type,
-      rows: f.payload || [],
-      id: f.id || `finding-${i}`,
-      timestamp: f.timestamp ? new Date(f.timestamp).getTime() : Date.now() + i,
-    }))
+    const entries = findings
+      .map((f, i) => ({
+        type: f.type,
+        rows: (f.payload || []).filter((r) => !r.info && !r.error),
+        id: f.id || `finding-${i}`,
+        timestamp: f.timestamp ? new Date(f.timestamp).getTime() : Date.now() + i,
+      }))
+      .filter((e) => e.rows.length > 0)
     setHistory(entries.reverse())
   }, [])
 
@@ -182,12 +187,14 @@ export default function App() {
       }
       if (fRes.ok) {
         const findings = await fRes.json()
-        const entries = findings.map((f, i) => ({
-          type: f.type,
-          rows: f.payload || [],
-          id: f.id || `finding-${i}`,
-          timestamp: f.timestamp ? new Date(f.timestamp).getTime() : Date.now() + i,
-        }))
+        const entries = findings
+          .map((f, i) => ({
+            type: f.type,
+            rows: (f.payload || []).filter((r) => !r.info && !r.error),
+            id: f.id || `finding-${i}`,
+            timestamp: f.timestamp ? new Date(f.timestamp).getTime() : Date.now() + i,
+          }))
+          .filter((e) => e.rows.length > 0)
         setHistory(entries.reverse())
       }
     } catch (err) {
@@ -356,7 +363,7 @@ export default function App() {
               if (entry.type === 'connections') return (
                 <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
                   <SectionHeader title="Connection Query Results" color="cyan" count={rows.length} {...sectionProps} />
-                  {expanded && <NetworkTable rows={rows} variant="threats" />}
+                  {expanded && <NetworkTable rows={rows} variant="connections" />}
                 </section>
               )
               if (entry.type === 'deviceBlocked') return (

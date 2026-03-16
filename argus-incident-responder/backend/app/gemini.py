@@ -357,7 +357,12 @@ class GeminiSession:
     MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     async def send_image(self, image_base64: str, mime_type: str = "image/jpeg") -> str | None:
-        """Returns an error message string if rejected, None on success."""
+        """Inject image directly into the Live session context.
+
+        Returns an error message string if rejected, None on success.
+        Uses turn_complete=False so the image waits for the analyst's
+        voice to complete the turn — voice-first unified interaction.
+        """
         if self._reconnecting or self._session is None:
             return "Session not available"
         raw = base64.b64decode(image_base64)
@@ -365,24 +370,21 @@ class GeminiSession:
             size_mb = len(raw) / 1024 / 1024
             logger.warning("Image rejected: %.1f MB exceeds %.0f MB limit", size_mb, self.MAX_IMAGE_BYTES / 1024 / 1024)
             return f"Image too large ({size_mb:.1f} MB). Maximum size is 5 MB."
-        try:
-            response = await _client.aio.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=[
-                    types.Part.from_bytes(data=raw, mime_type=mime_type),
-                    "Describe this image in detail for a SOC analyst. Focus on any security-relevant details like alerts, log entries, IP addresses, error messages, network diagrams, or suspicious indicators.",
-                ],
-            )
-            description = response.text or "Could not analyze the image."
-        except Exception as e:
-            logger.error("Image analysis failed: %s", e)
-            description = f"Image analysis failed: {e}"
+
+        await self._session.send_client_content(
+            turns=types.Content(
+                role="user",
+                parts=[types.Part.from_bytes(data=raw, mime_type=mime_type)],
+            ),
+            turn_complete=False,
+        )
+
         if self.incident_id:
             col = db.collection("incidents").document(self.incident_id).collection("transcripts")
             try:
                 await col.add({
                     "role": "user",
-                    "text": f"[Image uploaded] {description}",
+                    "text": "[Image uploaded]",
                     "has_image": True,
                     "mime_type": mime_type,
                     "timestamp": firestore.SERVER_TIMESTAMP,
@@ -390,15 +392,6 @@ class GeminiSession:
             except Exception as e:
                 logger.error("Failed to persist image transcript: %s", e)
 
-        await self._session.send_client_content(
-            turns=types.Content(
-                role="user",
-                parts=[types.Part.from_text(
-                    text=f"The analyst uploaded an image. Here is the analysis:\n\n{description}\n\nSummarize the key findings from this image to the analyst."
-                )],
-            ),
-            turn_complete=True,
-        )
         return None
 
     async def receive_audio_loop(self, websocket) -> None:
@@ -422,22 +415,28 @@ class GeminiSession:
                             sc.output_transcription, sc.input_transcription,
                         )
                     if msg.tool_call:
-                        for fc in msg.tool_call.function_calls:
+                        function_calls = msg.tool_call.function_calls
+
+                        async def _exec_tool(fc):
                             fn = _TOOL_MAP.get(fc.name)
                             args = fc.args or {}
                             try:
                                 if fn is None:
-                                    result = [{"error": f"Unknown tool: {fc.name}"}]
+                                    return fc, [{"error": f"Unknown tool: {fc.name}"}], args
                                 elif asyncio.iscoroutinefunction(fn):
-                                    result = await fn(**args)
+                                    return fc, await fn(**args), args
                                 else:
                                     loop = asyncio.get_event_loop()
-                                    result = await loop.run_in_executor(
+                                    return fc, await loop.run_in_executor(
                                         None, lambda f=fn, a=args: f(**a)
-                                    )
+                                    ), args
                             except Exception as e:
                                 logger.error("Tool %s raised: %s", fc.name, e)
-                                result = [{"error": str(e)}]
+                                return fc, [{"error": str(e)}], args
+
+                        results = await asyncio.gather(*[_exec_tool(fc) for fc in function_calls])
+
+                        for fc, result, args in results:
                             await self._session.send_tool_response(
                                 function_responses=types.FunctionResponse(
                                     name=fc.name,

@@ -55,6 +55,13 @@ const TRAFFIC_COLS = [
   { key: 'timestamp',           label: 'Timestamp', render: (v) => formatTimestamp(v) },
 ]
 
+const CONNECTION_COLS = [
+  { key: 'device_id',  label: 'Device ID' },
+  { key: 'status',     label: 'Status' },
+  { key: 'hits',       label: 'Hits' },
+  { key: 'last_seen',  label: 'Last Seen', render: (v) => formatTimestamp(v) },
+]
+
 function StatusBadge({ status }) {
   const badge = STATUS_BADGE[status] ?? 'bg-gray-800 text-gray-400'
   const dot   = STATUS_DOT[status]   ?? 'bg-gray-500'
@@ -66,9 +73,41 @@ function StatusBadge({ status }) {
   )
 }
 
-function TableRow({ row, cols, index }) {
-  const status = row.threat_intel_status ?? 'MALICIOUS'
-  const rowClass = STATUS_ROW[status] ?? ''
+const CONNECTION_STATUS_ROW = {
+  BLOCKED: 'bg-red-950 border-l-2 border-l-red-500',
+  ALLOWED: '',
+  ACTIVE:  '',
+  SUSPICIOUS: 'bg-yellow-950 border-l-2 border-l-yellow-500',
+}
+
+const CONNECTION_STATUS_BADGE = {
+  BLOCKED:    'bg-red-900 text-red-300',
+  ALLOWED:    'bg-green-900 text-green-300',
+  ACTIVE:     'bg-green-900 text-green-300',
+  SUSPICIOUS: 'bg-yellow-900 text-yellow-300',
+}
+
+const CONNECTION_STATUS_DOT = {
+  BLOCKED:    'bg-red-500',
+  ALLOWED:    'bg-green-500',
+  ACTIVE:     'bg-green-500',
+  SUSPICIOUS: 'bg-yellow-500',
+}
+
+function ConnectionStatusBadge({ status }) {
+  const badge = CONNECTION_STATUS_BADGE[status] ?? 'bg-gray-800 text-gray-400'
+  const dot   = CONNECTION_STATUS_DOT[status]   ?? 'bg-gray-500'
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono font-semibold ${badge}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+      {status ?? 'UNKNOWN'}
+    </span>
+  )
+}
+
+function TableRow({ row, cols, index, isConnection }) {
+  const status = isConnection ? (row.status ?? 'ACTIVE') : (row.threat_intel_status ?? 'MALICIOUS')
+  const rowClass = isConnection ? (CONNECTION_STATUS_ROW[status] ?? '') : (STATUS_ROW[status] ?? '')
   return (
     <tr
       className={`border-b border-gray-800 text-sm font-mono transition-colors hover:brightness-110 animate-slide-up-fade ${rowClass}`}
@@ -79,6 +118,13 @@ function TableRow({ row, cols, index }) {
           return (
             <td key={col.key} className="px-4 py-2 whitespace-nowrap">
               <StatusBadge status={row[col.key]} />
+            </td>
+          )
+        }
+        if (col.key === 'status' && isConnection) {
+          return (
+            <td key={col.key} className="px-4 py-2 whitespace-nowrap">
+              <ConnectionStatusBadge status={row[col.key]} />
             </td>
           )
         }
@@ -95,7 +141,7 @@ function TableRow({ row, cols, index }) {
 }
 
 export function NetworkTable({ rows, variant = 'threats' }) {
-  const cols = variant === 'threats' ? THREAT_COLS : TRAFFIC_COLS
+  const cols = variant === 'connections' ? CONNECTION_COLS : variant === 'threats' ? THREAT_COLS : TRAFFIC_COLS
 
   if (!rows || rows.length === 0) return null
 
@@ -113,7 +159,7 @@ export function NetworkTable({ rows, variant = 'threats' }) {
         </thead>
         <tbody className="bg-gray-950">
           {rows.map((row, idx) => (
-            <TableRow key={row.log_id ?? idx} row={row} cols={cols} index={idx} />
+            <TableRow key={row.log_id ?? row.device_id ?? idx} row={row} cols={cols} index={idx} isConnection={variant === 'connections'} />
           ))}
         </tbody>
       </table>

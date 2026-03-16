@@ -38,9 +38,10 @@ function base64Pcm16ToFloat32(base64) {
   return float32
 }
 
-const RMS_THRESHOLD = 0.15      // ~-16 dBFS — filters ambient noise, requires clear speech
+const RMS_THRESHOLD = 0.18      // ~-15 dBFS — raised for echo cancellation safety margin
 const SPEECH_COOLDOWN_MS = 300  // minimum ms between onSpeechStart fires
 const SPEECH_CONFIRM_FRAMES = 6 // consecutive frames above threshold before firing
+const SPEECH_CONFIRM_FRAMES_DURING_AGENT = 10 // extra frames during agent speech to filter residual echo
 
 export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmplitude, onAgentSpeakingStart, onAgentSpeakingEnd }) {
   // Capture refs
@@ -64,7 +65,9 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
   const startRecording = useCallback(async () => {
     if (captureCtxRef.current) return
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    })
     streamRef.current = stream
 
     const ctx = new AudioContext()
@@ -85,13 +88,16 @@ export function useAudio({ onChunk, onSpeechStart, onUserAmplitude, onAgentAmpli
       // Emit user amplitude for waveform visualization
       onUserAmplitude?.(rms)
 
-      // VAD: require SPEECH_CONFIRM_FRAMES consecutive frames above threshold.
-      // Skip entirely while agent is playing — mic bleed from speakers would
-      // otherwise trigger stopPlayback() and set isInterruptedRef = true.
-      if (onSpeechStart && !agentSpeakingRef.current) {
+      // VAD: require consecutive frames above threshold before firing.
+      // During agent speech, use a higher frame count to filter residual echo
+      // (echo cancellation handles most bleed, adaptive threshold catches the rest).
+      if (onSpeechStart) {
+        const requiredFrames = agentSpeakingRef.current
+          ? SPEECH_CONFIRM_FRAMES_DURING_AGENT
+          : SPEECH_CONFIRM_FRAMES
         if (rms > RMS_THRESHOLD) {
           consecutiveFramesRef.current += 1
-          if (consecutiveFramesRef.current >= SPEECH_CONFIRM_FRAMES) {
+          if (consecutiveFramesRef.current >= requiredFrames) {
             const now = Date.now()
             if (now - lastSpeechFireRef.current > SPEECH_COOLDOWN_MS) {
               lastSpeechFireRef.current = now
