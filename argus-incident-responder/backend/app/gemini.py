@@ -21,6 +21,7 @@ from app.tools import (
     get_high_severity_threats,
     get_network_summary,
     get_traffic_by_port,
+    unblock_device,
 )
 
 GEMINI_MODEL = "gemini-live-2.5-flash-native-audio"
@@ -38,8 +39,9 @@ _SYSTEM_INSTRUCTION = (
     "When an analyst asks about threats or port traffic, call the appropriate tool and report "
     "findings concisely: lead with the most critical data, use clear tactical language, "
     "and keep responses under 60 seconds of speech. Never speculate beyond the data returned. "
-    "You can block a device or IP address using the block_device tool, but ONLY when the analyst "
-    "explicitly orders you to block it. Never call block_device autonomously or proactively."
+    "You can block a device or IP address using the block_device tool, and unblock a previously "
+    "blocked device using the unblock_device tool, but ONLY when the analyst explicitly orders you "
+    "to block or unblock. Never call block_device or unblock_device autonomously or proactively."
 )
 
 _TOOL_DECLARATIONS = [
@@ -113,6 +115,20 @@ _TOOL_DECLARATIONS = [
                         "device_id": {
                             "type": "STRING",
                             "description": "The device ID or IP address to block.",
+                        }
+                    },
+                    "required": ["device_id"],
+                },
+            },
+            {
+                "name": "unblock_device",
+                "description": "Unblocks a previously blocked device ID or IP address, restoring its network access by setting status back to ALLOWED.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "device_id": {
+                            "type": "STRING",
+                            "description": "The device ID or IP address to unblock.",
                         }
                     },
                     "required": ["device_id"],
@@ -231,6 +247,7 @@ _TOOL_MAP = {
     "filter_network_logs":       filter_network_logs,
     "get_network_summary":       get_network_summary,
     "block_device":              block_device,
+    "unblock_device":            unblock_device,
     "get_active_connections":    get_active_connections,
     "get_connections_by_status": get_connections_by_status,
     "get_connection_details":    get_connection_details,
@@ -242,6 +259,7 @@ _TOOL_ACTION_MAP = {
     "filter_network_logs":        "RENDER_FILTERED_LOGS",
     "get_network_summary":        "RENDER_SUMMARY",
     "block_device":               "DEVICE_BLOCKED",
+    "unblock_device":             "DEVICE_UNBLOCKED",
     "get_active_connections":     "RENDER_CONNECTIONS",
     "get_connections_by_status":  "RENDER_CONNECTIONS",
     "get_connection_details":     "RENDER_CONNECTIONS",
@@ -253,6 +271,7 @@ _ACTION_FINDING_TYPE = {
     "RENDER_FILTERED_LOGS": "filteredLogs",
     "RENDER_SUMMARY":       "summary",
     "DEVICE_BLOCKED":       "deviceBlocked",
+    "DEVICE_UNBLOCKED":     "deviceUnblocked",
     "RENDER_CONNECTIONS":   "connections",
 }
 

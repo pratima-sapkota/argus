@@ -60,6 +60,7 @@ export default function App() {
     RENDER_FILTERED_LOGS: 'filteredLogs',
     RENDER_SUMMARY: 'summary',
     DEVICE_BLOCKED: 'deviceBlocked',
+    DEVICE_UNBLOCKED: 'deviceUnblocked',
     RENDER_CONNECTIONS: 'connections',
   }
 
@@ -376,6 +377,22 @@ export default function App() {
                           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                           <span className="text-red-300 text-sm font-mono">{r.blocked}</span>
                           <span className="text-red-500 text-xs uppercase tracking-widest ml-auto">blocked</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )
+              if (entry.type === 'deviceUnblocked') return (
+                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <SectionHeader title="Device Unblocked" color="green" count={rows.length} {...sectionProps} />
+                  {expanded && (
+                    <div className="flex flex-col gap-2 mt-2">
+                      {rows.map((r, i) => (
+                        <div key={i} className="flex items-center gap-3 rounded-lg border border-green-500 bg-green-950 px-4 py-3">
+                          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                          <span className="text-green-300 text-sm font-mono">{r.unblocked}</span>
+                          <span className="text-green-500 text-xs uppercase tracking-widest ml-auto">unblocked</span>
                         </div>
                       ))}
                     </div>

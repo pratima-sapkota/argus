@@ -234,6 +234,22 @@ async def block_device(device_id: str) -> list[dict]:
         return [{"error": str(e)}]
 
 
+async def unblock_device(device_id: str) -> list[dict]:
+    """Unblocks a previously blocked device ID or IP address, restoring its network access."""
+    try:
+        doc_ref = db.collection("active_connections").document(device_id)
+        doc = await doc_ref.get()
+        if not doc.exists:
+            return [{"error": f"Device '{device_id}' not found in active connections."}]
+        if (doc.to_dict() or {}).get("status") != "BLOCKED":
+            return [{"info": f"Device '{device_id}' is not currently blocked."}]
+        await doc_ref.update({"status": "ALLOWED"})
+        return [{"unblocked": device_id}]
+    except Exception as e:
+        logger.error("unblock_device failed for %s: %s", device_id, e)
+        return [{"error": str(e)}]
+
+
 def get_network_summary() -> list[dict]:
     """Return an at-a-glance summary of the entire network_logs dataset.
 
