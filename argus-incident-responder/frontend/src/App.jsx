@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import { useAudio } from './hooks/useAudio'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useActiveConnections } from './hooks/useActiveConnections'
@@ -288,6 +288,36 @@ export default function App() {
 
   const hasData = history.length > 0 || connections.length > 0
 
+  const DEVICE_TYPES = new Set(['deviceBlocked', 'deviceUnblocked'])
+  const ONE_MINUTE = 60_000
+
+  const groupedHistory = useMemo(() => {
+    const groups = []
+    for (const entry of history) {
+      if (!DEVICE_TYPES.has(entry.type)) {
+        groups.push(entry)
+        continue
+      }
+      const prev = groups[groups.length - 1]
+      if (
+        prev?._stack &&
+        prev.type === entry.type &&
+        Math.abs(entry.timestamp - prev._lastTs) <= ONE_MINUTE
+      ) {
+        prev._children.push(entry)
+        prev._lastTs = Math.max(prev._lastTs, entry.timestamp)
+      } else {
+        groups.push({
+          ...entry,
+          _stack: true,
+          _children: [entry],
+          _lastTs: entry.timestamp,
+        })
+      }
+    }
+    return groups
+  }, [history])
+
   const now = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -333,8 +363,10 @@ export default function App() {
           </div>
         ) : (
           <>
-            {history.map((entry, index) => {
-              const key = entry.id || `${entry.timestamp}-${index}`
+            {groupedHistory.map((entry, index) => {
+              const key = entry._stack
+                ? `stack-${entry.type}-${entry._children.map(c => c.id).join('|')}`
+                : (entry.id || `${entry.timestamp}-${index}`)
               const rows = entry.rows || []
               const expanded = collapseOverrides[key] ?? (index === 0)
               const toggle = () =>
@@ -372,38 +404,94 @@ export default function App() {
                   {expanded && <NetworkTable rows={rows} variant="connections" />}
                 </section>
               )
-              if (entry.type === 'deviceBlocked') return (
-                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="Device Blocked" color="red" count={rows.length} {...sectionProps} />
-                  {expanded && (
-                    <div className="flex flex-col gap-2 mt-2">
-                      {rows.map((r, i) => (
-                        <div key={i} className="flex items-center gap-3 rounded-lg border border-red-500 bg-red-950 px-4 py-3">
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                          <span className="text-red-300 text-sm font-mono">{r.blocked}</span>
-                          <span className="text-red-500 text-xs uppercase tracking-widest ml-auto">blocked</span>
-                        </div>
-                      ))}
+              if (entry.type === 'deviceBlocked' || entry.type === 'deviceUnblocked') {
+                const isBlocked = entry.type === 'deviceBlocked'
+                const color = isBlocked ? 'red' : 'green'
+                const label = isBlocked ? 'blocked' : 'unblocked'
+                const borderColor = isBlocked ? 'border-red-500' : 'border-green-500'
+                const bgColor = isBlocked ? 'bg-red-950' : 'bg-green-950'
+                const dotColor = isBlocked ? 'bg-red-500' : 'bg-green-500'
+                const textColor = isBlocked ? 'text-red-300' : 'text-green-300'
+                const labelColor = isBlocked ? 'text-red-500' : 'text-green-500'
+                const children = entry._stack ? entry._children : [entry]
+                const count = children.length
+                const isStack = count > 1
+
+                if (!expanded && isStack) {
+                  const peekCount = Math.min(count, 4)
+                  return (
+                    <div key={key} className="relative cursor-pointer" style={{ marginBottom: (peekCount - 1) * 6 }} onClick={toggle}>
+                      {children.slice(0, peekCount).map((child, i) => {
+                        const isTop = i === 0
+                        return (
+                          <section
+                            key={child.id}
+                            className={`bg-gray-900 rounded-xl border border-gray-800 p-4 ${!isTop ? 'absolute inset-x-0' : 'relative'}`}
+                            style={!isTop ? {
+                              top: i * 6,
+                              zIndex: peekCount - i,
+                              transform: `scale(${1 - i * 0.015})`,
+                              opacity: 1 - i * 0.15,
+                              pointerEvents: 'none',
+                            } : { zIndex: peekCount, position: 'relative' }}
+                          >
+                            <SectionHeader
+                              title={isTop ? (isBlocked ? 'Devices Blocked' : 'Devices Unblocked') : (isBlocked ? 'Device Blocked' : 'Device Unblocked')}
+                              color={color}
+                              count={isTop ? count : child.rows.length}
+                              expanded={false}
+                              onToggle={isTop ? toggle : undefined}
+                            />
+                          </section>
+                        )
+                      })}
                     </div>
-                  )}
-                </section>
-              )
-              if (entry.type === 'deviceUnblocked') return (
-                <section key={key} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                  <SectionHeader title="Device Unblocked" color="green" count={rows.length} {...sectionProps} />
-                  {expanded && (
-                    <div className="flex flex-col gap-2 mt-2">
-                      {rows.map((r, i) => (
-                        <div key={i} className="flex items-center gap-3 rounded-lg border border-green-500 bg-green-950 px-4 py-3">
-                          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                          <span className="text-green-300 text-sm font-mono">{r.unblocked}</span>
-                          <span className="text-green-500 text-xs uppercase tracking-widest ml-auto">unblocked</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              )
+                  )
+                }
+
+                return (
+                  <div key={key} className="flex flex-col gap-3">
+                    {children.map((child, i) => {
+                      const childRows = child.rows || []
+                      const childKey = child.id || `${child.timestamp}-${i}`
+                      const childExpanded = collapseOverrides[childKey] ?? expanded
+                      const childToggle = () =>
+                        setCollapseOverrides((prev) => ({ ...prev, [childKey]: !childExpanded }))
+
+                      return (
+                        <section key={childKey} className="bg-gray-900 rounded-xl border border-gray-800 p-4 animate-slide-up-fade">
+                          <SectionHeader
+                            title={isBlocked ? 'Device Blocked' : 'Device Unblocked'}
+                            color={color}
+                            count={childRows.length}
+                            expanded={childExpanded}
+                            onToggle={isStack ? childToggle : toggle}
+                          />
+                          {(isStack ? childExpanded : expanded) && (
+                            <div className="flex flex-col gap-2 mt-2">
+                              {childRows.map((r, j) => (
+                                <div key={j} className={`flex items-center gap-3 rounded-lg border ${borderColor} ${bgColor} px-4 py-3`}>
+                                  <span className={`w-2 h-2 rounded-full ${dotColor} animate-pulse`} />
+                                  <span className={`${textColor} text-sm font-mono`}>{r.blocked || r.unblocked}</span>
+                                  <span className={`${labelColor} text-xs uppercase tracking-widest ml-auto`}>{label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      )
+                    })}
+                    {isStack && (
+                      <button
+                        onClick={toggle}
+                        className="text-gray-500 hover:text-gray-300 text-xs font-mono uppercase tracking-widest self-center py-1"
+                      >
+                        Collapse stack
+                      </button>
+                    )}
+                  </div>
+                )
+              }
               return null
             })}
 

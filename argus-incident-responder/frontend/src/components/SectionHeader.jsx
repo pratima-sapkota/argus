@@ -4,6 +4,7 @@ const COLOR_DOT = {
   yellow: 'bg-yellow-500',
   cyan:   'bg-cyan-500',
   indigo: 'bg-indigo-500',
+  green:  'bg-green-500',
 }
 
 const COLOR_TEXT = {
@@ -12,6 +13,7 @@ const COLOR_TEXT = {
   yellow: 'text-yellow-400',
   cyan:   'text-cyan-400',
   indigo: 'text-indigo-400',
+  green:  'text-green-400',
 }
 
 const COLOR_BADGE = {
@@ -20,6 +22,7 @@ const COLOR_BADGE = {
   yellow: 'bg-yellow-950 text-yellow-400',
   cyan:   'bg-cyan-950 text-cyan-400',
   indigo: 'bg-indigo-950 text-indigo-400',
+  green:  'bg-green-950 text-green-400',
 }
 
 export function SectionHeader({ title, color = 'blue', count, expanded, onToggle }) {
