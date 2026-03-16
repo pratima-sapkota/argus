@@ -203,7 +203,7 @@ const STATE_STYLES = {
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline', onImageSend, wsError }) {
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline', onImageSend, onTextSend, wsError }) {
   const agentAmpSnap = agentAmpRef?.current ?? 0
   const fileInputRef = useRef(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -426,7 +426,7 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
         {/* Divider */}
         <div className="w-full h-px flex-shrink-0" style={{ background: 'rgba(99,102,241,0.1)' }} />
 
-        <TranscriptFeed messages={messages} />
+        <TranscriptFeed messages={messages} active={active} />
 
         {/* Past Chats */}
         {!active && pastChats.length > 0 && (

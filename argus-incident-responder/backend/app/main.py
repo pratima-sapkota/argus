@@ -170,6 +170,10 @@ async def websocket_endpoint(
                         for chunk in msg.get("media_chunks", []):
                             if chunk.get("data"):
                                 await gemini.send_audio(chunk["data"])
+                    elif msg.get("type") == "text_input":
+                        text = msg.get("text", "").strip()
+                        if text:
+                            await gemini.send_text(text)
                     elif msg.get("type") == "image_input":
                         data = msg.get("data")
                         mime_type = msg.get("mime_type", "image/jpeg")

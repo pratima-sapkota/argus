@@ -413,6 +413,17 @@ class GeminiSession:
 
         return None
 
+    async def send_text(self, text: str) -> None:
+        if self._reconnecting or self._session is None:
+            return
+        await self._session.send_client_content(
+            turns=types.Content(
+                role="user",
+                parts=[types.Part(text=text)],
+            ),
+            turn_complete=True,
+        )
+
     async def receive_audio_loop(self, websocket) -> None:
         consecutive_errors = 0
         while True:

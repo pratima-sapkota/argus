@@ -225,7 +225,7 @@ export default function App() {
     }
   }, [])
 
-  const { connected, connect, disconnect, sendAudioChunk, sendImage } = useWebSocket({
+  const { connected, connect, disconnect, sendAudioChunk, sendImage, sendText } = useWebSocket({
     onAudioReceived,
     onTurnComplete: handleTurnComplete,
     onInterrupted: handleInterrupted,
@@ -244,6 +244,11 @@ export default function App() {
       { role: 'user', image: `data:${mimeType};base64,${base64Data}`, timestamp: Date.now() },
     ])
   }, [sendImage])
+
+  const handleTextSend = useCallback((text) => {
+    sendText(text)
+    setMessages((prev) => [...prev, { role: 'user', text, timestamp: Date.now() }])
+  }, [sendText])
 
   // Sync ref every render so onSpeechStart always calls the latest stopPlayback
   stopPlaybackRef.current = stopPlayback
@@ -432,6 +437,7 @@ export default function App() {
         onClearAllSessions={handleClearAllSessions}
         agentState={agentState}
         onImageSend={handleImageSend}
+        onTextSend={handleTextSend}
         wsError={wsError}
       />
     </div>

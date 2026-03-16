@@ -124,5 +124,12 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
     )
   }, [])
 
-  return { connected, connect, disconnect, sendAudioChunk, sendImage, incidentIdRef }
+  const sendText = useCallback((text) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    wsRef.current.send(
+      JSON.stringify({ type: 'text_input', text })
+    )
+  }, [])
+
+  return { connected, connect, disconnect, sendAudioChunk, sendImage, sendText, incidentIdRef }
 }
