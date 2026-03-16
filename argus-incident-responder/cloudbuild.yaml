@@ -123,18 +123,15 @@ steps:
     id: public-frontend
     waitFor: [deploy-frontend]
 
-  # 8. Update backend with frontend origin for CORS
+  # 8. Update backend with CORS allowing all origins
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -c
       - |
-        FRONTEND_URL=$(gcloud run services describe ${_FRONTEND_SERVICE} \
-          --region=${_REGION} \
-          --format='value(status.url)')
         gcloud run services update ${_BACKEND_SERVICE} \
           --region=${_REGION} \
-          --update-env-vars=ALLOWED_ORIGINS=$$FRONTEND_URL
+          --update-env-vars=ALLOWED_ORIGINS=*
     id: set-backend-cors
     waitFor: [public-frontend]
 
