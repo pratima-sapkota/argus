@@ -30,6 +30,10 @@ export default {
           '60%':  { opacity: '1',   transform: 'scale(1.04)' },
           '100%': { opacity: '1',   transform: 'scale(1)' },
         },
+        'slide-down-fade': {
+          '0%':   { opacity: '0', transform: 'translateY(-8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
         'bar-grow': {
           '0%':   { transform: 'scaleY(0.1)' },
           '100%': { transform: 'scaleY(1)' },
@@ -37,6 +41,7 @@ export default {
       },
       animation: {
         'slide-up-fade':    'slide-up-fade 0.3s ease-out both',
+        'slide-down-fade':  'slide-down-fade 0.2s ease-out both',
         'pulse-glow':       'pulse-glow 2s ease-in-out infinite',
         'scan':             'scan 4s linear infinite',
         'orb-idle':         'orb-idle 3s ease-in-out infinite',

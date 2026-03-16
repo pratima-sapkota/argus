@@ -13,4 +13,5 @@ google-cloud-bigquery>=3.20.0
 google-cloud-firestore>=2.16.0
 firebase-admin>=6.5.0
 python-dotenv>=1.0.0
+Pillow>=10.0.0
 faker>=25.0.0

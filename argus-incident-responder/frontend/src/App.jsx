@@ -5,6 +5,7 @@ import { useActiveConnections } from './hooks/useActiveConnections'
 import { NetworkTable } from './components/NetworkTable'
 import { SummaryChart } from './components/SummaryChart'
 import { DeviceCard } from './components/DeviceCard'
+import { FloatingAgent } from './components/FloatingAgent'
 import { AgentPanel } from './components/AgentPanel'
 import { SectionHeader } from './components/SectionHeader'
 
@@ -22,6 +23,7 @@ export default function App() {
   const [thinking, setThinking] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [wsError, setWsError] = useState(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
   // AgentPanel reads these refs via a stable object reference.
@@ -326,9 +328,8 @@ export default function App() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-950 flex">
-      {/* ── Left panel (80%) ── */}
-      <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 dot-grid">
+    <div className="min-h-screen bg-gray-950">
+      <main className="overflow-y-auto p-6 flex flex-col gap-6 dot-grid min-h-screen">
 
         {/* Header bar */}
         <div className="flex items-center justify-between border-b border-gray-800 pb-4">
@@ -338,7 +339,49 @@ export default function App() {
               Argus SOC
             </span>
           </div>
-          <span className="text-gray-600 text-xs font-mono">{now}</span>
+          <div className="flex items-center gap-4">
+            <span className="text-gray-600 text-xs font-mono">{now}</span>
+            <div className="relative">
+              <button
+                onClick={() => setHistoryOpen((prev) => !prev)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all active:scale-95"
+                style={{
+                  background: historyOpen ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)',
+                  border: historyOpen ? '1px solid rgba(99,102,241,0.4)' : '1px solid rgba(99,102,241,0.15)',
+                  color: historyOpen ? '#a5b4fc' : '#9ca3af',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                History
+              </button>
+              {historyOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setHistoryOpen(false)} />
+                  <div
+                    className="absolute top-10 right-0 z-50 animate-slide-down-fade"
+                    style={{ width: 360 }}
+                  >
+                    <AgentPanel
+                      active={active}
+                      onToggle={handleToggle}
+                      messages={messages}
+                      pastChats={pastChats}
+                      viewingChatId={viewingChatId}
+                      onViewChat={handleViewChat}
+                      onBackToLive={handleBackToLive}
+                      onClearAllSessions={handleClearAllSessions}
+                      agentState={agentState}
+                      onTextSend={handleTextSend}
+                      wsError={wsError}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         {viewingChatId && (
@@ -509,24 +552,15 @@ export default function App() {
         )}
       </main>
 
-      {/* ── Right panel (agent sidebar) ── */}
-      <AgentPanel
+      <FloatingAgent
         active={active}
-        connected={connected}
         onToggle={handleToggle}
         userAmpRef={userAmpRef}
         agentAmpRef={agentAmpRef}
         interrupted={interrupted}
-        messages={messages}
-        pastChats={pastChats}
-        viewingChatId={viewingChatId}
-        onViewChat={handleViewChat}
-        onBackToLive={handleBackToLive}
-        onClearAllSessions={handleClearAllSessions}
-        agentState={agentState}
         onImageSend={handleImageSend}
-        onTextSend={handleTextSend}
         wsError={wsError}
+        agentState={agentState}
       />
     </div>
   )

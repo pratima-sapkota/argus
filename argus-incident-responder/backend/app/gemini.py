@@ -1,8 +1,10 @@
 import asyncio
 import base64
+import io
 import json
 import logging
 
+from PIL import Image
 from google import genai
 
 logger = logging.getLogger(__name__)
@@ -38,10 +40,14 @@ _SYSTEM_INSTRUCTION = (
     "You have direct access to live network telemetry via BigQuery and active firewall control. "
     "When an analyst asks about threats or port traffic, call the appropriate tool and report "
     "findings concisely: lead with the most critical data, use clear tactical language, "
-    "and keep responses under 60 seconds of speech. Never speculate beyond the data returned. "
+    "and keep responses under 45 seconds of speech. Never speculate beyond the data returned. "
     "You can block a device or IP address using the block_device tool, and unblock a previously "
     "blocked device using the unblock_device tool, but ONLY when the analyst explicitly orders you "
-    "to block or unblock. Never call block_device or unblock_device autonomously or proactively."
+    "to block or unblock. Never call block_device or unblock_device autonomously or proactively. "
+    "After any tool call, always respond with a high-level summary only — never enumerate raw "
+    "records, IPs, host names, or granular data in your response. The analyst has full visibility "
+    "of the underlying data in the dashboard. Summarize what was found or actioned, highlight "
+    "anything critical, and stop there."
 )
 
 _TOOL_DECLARATIONS = [
@@ -374,13 +380,25 @@ class GeminiSession:
         )
 
     MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+    MAX_IMAGE_DIMENSION = 1024
+
+    @staticmethod
+    def _normalize_image(raw: bytes, mime_type: str) -> tuple[bytes, str]:
+        """Resize image so the longest side is at most MAX_IMAGE_DIMENSION and re-encode as JPEG."""
+        img = Image.open(io.BytesIO(raw))
+        img = img.convert("RGB")
+        w, h = img.size
+        if max(w, h) > GeminiSession.MAX_IMAGE_DIMENSION:
+            scale = GeminiSession.MAX_IMAGE_DIMENSION / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue(), "image/jpeg"
 
     async def send_image(self, image_base64: str, mime_type: str = "image/jpeg") -> str | None:
-        """Inject image directly into the Live session context.
+        """Inject image directly into the Live session via realtime input.
 
         Returns an error message string if rejected, None on success.
-        Uses turn_complete=False so the image waits for the analyst's
-        voice to complete the turn — voice-first unified interaction.
         """
         if self._reconnecting or self._session is None:
             return "Session not available"
@@ -390,12 +408,10 @@ class GeminiSession:
             logger.warning("Image rejected: %.1f MB exceeds %.0f MB limit", size_mb, self.MAX_IMAGE_BYTES / 1024 / 1024)
             return f"Image too large ({size_mb:.1f} MB). Maximum size is 5 MB."
 
-        await self._session.send_client_content(
-            turns=types.Content(
-                role="user",
-                parts=[types.Part.from_bytes(data=raw, mime_type=mime_type)],
-            ),
-            turn_complete=False,
+        raw, mime_type = self._normalize_image(raw, mime_type)
+
+        await self._session.send_realtime_input(
+            media=types.Blob(data=raw, mime_type=mime_type),
         )
 
         if self.incident_id:
