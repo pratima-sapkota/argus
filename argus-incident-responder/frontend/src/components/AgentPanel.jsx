@@ -201,13 +201,27 @@ const STATE_STYLES = {
   Reconnecting: { color: '#fb923c', shadow: '0 0 6px rgba(251,146,60,0.6)',     pulse: true  },
 }
 
-export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline', onImageSend }) {
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB
+
+export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRef, interrupted = false, messages = [], pastChats = [], viewingChatId, onViewChat, onBackToLive, onClearAllSessions, agentState = 'Offline', onImageSend, wsError }) {
   const agentAmpSnap = agentAmpRef?.current ?? 0
   const fileInputRef = useRef(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const dragCounterRef = useRef(0)
 
-  const handleFileSelect = useCallback((e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  useEffect(() => {
+    if (!uploadError) return
+    const t = setTimeout(() => setUploadError(null), 4000)
+    return () => clearTimeout(t)
+  }, [uploadError])
+
+  const processFile = useCallback((file) => {
+    if (!file?.type.startsWith('image/')) return
+    if (file.size > MAX_IMAGE_SIZE) {
+      setUploadError(`Image too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max size is 5 MB.`)
+      return
+    }
     const reader = new FileReader()
     reader.onload = () => {
       const dataUrl = reader.result
@@ -216,16 +230,72 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
       onImageSend?.(base64Data, mimeType)
     }
     reader.readAsDataURL(file)
-    e.target.value = ''
   }, [onImageSend])
+
+  const handleFileSelect = useCallback((e) => {
+    processFile(e.target.files?.[0])
+    e.target.value = ''
+  }, [processFile])
+
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    if (e.dataTransfer?.types?.includes('Files')) setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) setIsDragOver(false)
+  }, [])
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    const file = e.dataTransfer?.files?.[0]
+    if (file) processFile(file)
+  }, [processFile])
   return (
     <aside
-      className="w-[25%] min-w-[260px] flex flex-col sticky top-0 h-screen overflow-hidden"
+      className="w-[25%] min-w-[260px] flex flex-col sticky top-0 h-screen overflow-hidden relative"
       style={{
         background: 'linear-gradient(180deg, #0d0d1a 0%, #0a0a14 100%)',
         borderLeft: '1px solid rgba(99,102,241,0.14)',
       }}
+      onDragEnter={active ? handleDragEnter : undefined}
+      onDragLeave={active ? handleDragLeave : undefined}
+      onDragOver={active ? handleDragOver : undefined}
+      onDrop={active ? handleDrop : undefined}
     >
+      {/* Drop zone overlay */}
+      {isDragOver && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 pointer-events-none"
+          style={{
+            background: 'rgba(99,102,241,0.12)',
+            border: '2px dashed rgba(99,102,241,0.6)',
+            borderRadius: '8px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(129,140,248,0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span className="text-indigo-300 text-sm font-medium">Drop image here</span>
+        </div>
+      )}
+
       {/* Top accent line */}
       <div
         className="h-px w-full flex-shrink-0"
@@ -291,6 +361,21 @@ export function AgentPanel({ active, connected, onToggle, userAmpRef, agentAmpRe
           />
         </div>
 
+
+        {/* Upload error toast */}
+        {(uploadError || wsError) && (
+          <div
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-300 flex-shrink-0 animate-slide-up-fade"
+            style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.3)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+            {uploadError || wsError}
+          </div>
+        )}
 
         {/* Image upload */}
         {active && (

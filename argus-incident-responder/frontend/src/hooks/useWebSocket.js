@@ -3,7 +3,7 @@ import { useRef, useState, useCallback } from 'react'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws'
 
-export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript, onTranscriptHistory, onFindingsHistory, onAgentState }) {
+export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, onUiUpdate, onTranscript, onTranscriptHistory, onFindingsHistory, onAgentState, onError }) {
   const wsRef = useRef(null)
   const incidentIdRef = useRef(null)
   const [connected, setConnected] = useState(false)
@@ -13,12 +13,14 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
   const onTranscriptHistoryRef = useRef(onTranscriptHistory)
   const onFindingsHistoryRef = useRef(onFindingsHistory)
   const onAgentStateRef = useRef(onAgentState)
+  const onErrorRef = useRef(onError)
   onTurnCompleteRef.current = onTurnComplete
   onInterruptedRef.current = onInterrupted
   onTranscriptRef.current = onTranscript
   onTranscriptHistoryRef.current = onTranscriptHistory
   onFindingsHistoryRef.current = onFindingsHistory
   onAgentStateRef.current = onAgentState
+  onErrorRef.current = onError
 
   const connect = useCallback(async () => {
     if (wsRef.current) return
@@ -76,6 +78,8 @@ export function useWebSocket({ onAudioReceived, onTurnComplete, onInterrupted, o
         } else if (msg.type === 'transcript') {
           console.log('[ws] transcript:', msg.role, msg.text)
           onTranscriptRef.current?.({ role: msg.role, text: msg.text })
+        } else if (msg.type === 'error') {
+          onErrorRef.current?.(msg.message)
         }
       } catch {
         // ignore malformed frames

@@ -354,10 +354,17 @@ class GeminiSession:
             audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000")
         )
 
-    async def send_image(self, image_base64: str, mime_type: str = "image/jpeg") -> None:
+    MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    async def send_image(self, image_base64: str, mime_type: str = "image/jpeg") -> str | None:
+        """Returns an error message string if rejected, None on success."""
         if self._reconnecting or self._session is None:
-            return
+            return "Session not available"
         raw = base64.b64decode(image_base64)
+        if len(raw) > self.MAX_IMAGE_BYTES:
+            size_mb = len(raw) / 1024 / 1024
+            logger.warning("Image rejected: %.1f MB exceeds %.0f MB limit", size_mb, self.MAX_IMAGE_BYTES / 1024 / 1024)
+            return f"Image too large ({size_mb:.1f} MB). Maximum size is 5 MB."
         try:
             response = await _client.aio.models.generate_content(
                 model="gemini-2.5-flash",
@@ -375,8 +382,8 @@ class GeminiSession:
             try:
                 await col.add({
                     "role": "user",
-                    "text": "",
-                    "image": image_base64,
+                    "text": f"[Image uploaded] {description}",
+                    "has_image": True,
                     "mime_type": mime_type,
                     "timestamp": firestore.SERVER_TIMESTAMP,
                 })
@@ -392,6 +399,7 @@ class GeminiSession:
             ),
             turn_complete=True,
         )
+        return None
 
     async def receive_audio_loop(self, websocket) -> None:
         consecutive_errors = 0

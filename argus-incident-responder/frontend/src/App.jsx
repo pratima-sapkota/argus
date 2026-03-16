@@ -21,6 +21,7 @@ export default function App() {
   const [agentSpeaking, setAgentSpeaking] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
+  const [wsError, setWsError] = useState(null)
 
   // Waveform amplitudes: use refs to avoid flooding React renders at audio-frame rate.
   // AgentPanel reads these refs via a stable object reference.
@@ -84,9 +85,9 @@ export default function App() {
     if (!text) return
     setMessages((prev) => {
       const last = prev[prev.length - 1]
-      if (last && last.role === role) {
+      if (last && last.role === role && !last.image) {
         const updated = [...prev]
-        updated[updated.length - 1] = { ...last, text: last.text + text }
+        updated[updated.length - 1] = { ...last, text: (last.text || '') + text }
         return updated
       }
       return [...prev, { role, text, timestamp: Date.now() }]
@@ -109,6 +110,11 @@ export default function App() {
       }
     }
     setMessages((prev) => [...merged, ...prev])
+  }, [])
+
+  const handleWsError = useCallback((message) => {
+    setWsError(message)
+    setTimeout(() => setWsError(null), 4000)
   }, [])
 
   const handleAgentState = useCallback((state) => {
@@ -220,6 +226,7 @@ export default function App() {
     onTranscriptHistory: handleTranscriptHistory,
     onFindingsHistory: handleFindingsHistory,
     onAgentState: handleAgentState,
+    onError: handleWsError,
   })
 
   const handleImageSend = useCallback((base64Data, mimeType) => {
@@ -401,6 +408,7 @@ export default function App() {
         onClearAllSessions={handleClearAllSessions}
         agentState={agentState}
         onImageSend={handleImageSend}
+        wsError={wsError}
       />
     </div>
   )

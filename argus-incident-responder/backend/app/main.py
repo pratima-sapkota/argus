@@ -174,7 +174,9 @@ async def websocket_endpoint(
                         data = msg.get("data")
                         mime_type = msg.get("mime_type", "image/jpeg")
                         if data:
-                            await gemini.send_image(data, mime_type)
+                            err = await gemini.send_image(data, mime_type)
+                            if err:
+                                await websocket.send_text(json.dumps({"type": "error", "message": err}))
             except WebSocketDisconnect:
                 logger.info("Client disconnected")
             except Exception as e:
