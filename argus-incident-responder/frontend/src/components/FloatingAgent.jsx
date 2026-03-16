@@ -106,6 +106,7 @@ export function FloatingAgent({
   const fileInputRef = useRef(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploadError, setUploadError] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const dragCounterRef = useRef(0)
 
   useEffect(() => {
@@ -113,6 +114,10 @@ export function FloatingAgent({
     const t = setTimeout(() => setUploadError(null), 4000)
     return () => clearTimeout(t)
   }, [uploadError])
+
+  useEffect(() => {
+    if (agentState === 'Speaking') setImagePreview(null)
+  }, [agentState])
 
   const processFile = useCallback((file) => {
     if (!file?.type.startsWith('image/')) return
@@ -125,6 +130,7 @@ export function FloatingAgent({
       const dataUrl = reader.result
       const [header, base64Data] = dataUrl.split(',')
       const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg'
+      setImagePreview(dataUrl)
       onImageSend?.(base64Data, mimeType)
     }
     reader.readAsDataURL(file)
@@ -198,9 +204,9 @@ export function FloatingAgent({
         </div>
       )}
 
-      {/* Image upload icon */}
+      {/* Image upload icon — right-aligned above orb */}
       {active && (
-        <div className="relative">
+        <div className="relative self-center">
           <input
             ref={fileInputRef}
             type="file"
@@ -210,19 +216,23 @@ export function FloatingAgent({
           />
           <button
             onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}
-            className="flex items-center justify-center w-10 h-10 rounded-full transition-all hover:scale-110 active:scale-95"
+            className="flex items-center justify-center w-12 h-12 rounded-full transition-all hover:scale-110 active:scale-95 overflow-hidden"
             style={{
-              background: isDragOver ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.12)',
-              border: isDragOver ? '2px dashed rgba(129,140,248,0.8)' : '1px solid rgba(99,102,241,0.25)',
-              boxShadow: isDragOver ? '0 0 12px rgba(99,102,241,0.4)' : 'none',
+              background: isDragOver ? 'rgba(99,102,241,0.3)' : imagePreview ? 'transparent' : 'rgba(99,102,241,0.12)',
+              border: isDragOver ? '2px dashed rgba(129,140,248,0.8)' : imagePreview ? '2px solid rgba(129,140,248,0.6)' : '1px solid rgba(99,102,241,0.25)',
+              boxShadow: isDragOver ? '0 0 12px rgba(99,102,241,0.4)' : imagePreview ? '0 0 8px rgba(99,102,241,0.3)' : 'none',
             }}
             title="Upload image (or Ctrl+V to paste)"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(165,180,252,0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
+            {imagePreview ? (
+              <img src={imagePreview} alt="Uploaded" className="w-full h-full object-cover" />
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(165,180,252,0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            )}
           </button>
           {isDragOver && (
             <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-indigo-300 text-[10px] whitespace-nowrap font-medium">
@@ -233,10 +243,10 @@ export function FloatingAgent({
       )}
 
       {/* FAB orb with state label */}
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center justify-center">
         {active && agentState && (
           <span
-            className="text-[11px] font-medium tracking-wide uppercase animate-slide-up-fade"
+            className="absolute right-full mr-2 text-[11px] font-medium tracking-wide uppercase animate-slide-up-fade whitespace-nowrap"
             style={{
               color: agentState === 'Speaking' ? 'rgba(129,140,248,0.9)'
                 : agentState === 'Thinking' ? 'rgba(251,191,36,0.9)'

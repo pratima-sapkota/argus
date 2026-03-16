@@ -6,7 +6,6 @@ import { NetworkTable } from './components/NetworkTable'
 import { SummaryChart } from './components/SummaryChart'
 import { DeviceCard } from './components/DeviceCard'
 import { FloatingAgent } from './components/FloatingAgent'
-import { AgentPanel } from './components/AgentPanel'
 import { SectionHeader } from './components/SectionHeader'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -346,9 +345,9 @@ export default function App() {
                 onClick={() => setHistoryOpen((prev) => !prev)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all active:scale-95"
                 style={{
-                  background: historyOpen ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)',
-                  border: historyOpen ? '1px solid rgba(99,102,241,0.4)' : '1px solid rgba(99,102,241,0.15)',
-                  color: historyOpen ? '#a5b4fc' : '#9ca3af',
+                  background: historyOpen ? 'rgba(99,102,241,0.85)' : 'rgba(99,102,241,0.72)',
+                  border: historyOpen ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(99,102,241,0.3)',
+                  color: historyOpen ? '#c7d2fe' : '#c4b5fd',
                 }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -361,22 +360,60 @@ export default function App() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setHistoryOpen(false)} />
                   <div
-                    className="absolute top-10 right-0 z-50 animate-slide-down-fade"
-                    style={{ width: 360 }}
+                    className="absolute top-10 right-0 z-50 animate-slide-down-fade rounded-xl overflow-hidden"
+                    style={{
+                      width: 320,
+                      background: 'linear-gradient(180deg, #0d0d1a 0%, #0a0a14 100%)',
+                      border: '1px solid rgba(99,102,241,0.18)',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.08)',
+                    }}
                   >
-                    <AgentPanel
-                      active={active}
-                      onToggle={handleToggle}
-                      messages={messages}
-                      pastChats={pastChats}
-                      viewingChatId={viewingChatId}
-                      onViewChat={handleViewChat}
-                      onBackToLive={handleBackToLive}
-                      onClearAllSessions={handleClearAllSessions}
-                      agentState={agentState}
-                      onTextSend={handleTextSend}
-                      wsError={wsError}
-                    />
+                    <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.85), transparent)' }} />
+                    <div className="p-3 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Past Sessions</span>
+                        {pastChats.length > 0 && (
+                          <button
+                            onClick={handleClearAllSessions}
+                            className="text-[10px] text-red-400 hover:text-red-300 tracking-wide"
+                          >
+                            Clear All
+                          </button>
+                        )}
+                      </div>
+                      {pastChats.length === 0 ? (
+                        <p className="text-gray-600 text-xs text-center py-6">No past sessions</p>
+                      ) : (
+                        <div className="overflow-y-auto transcript-scroll space-y-0.5" style={{ maxHeight: 320 }}>
+                          {pastChats.map((chat) => {
+                            const isViewing = viewingChatId === chat.id
+                            const date = chat.created_at
+                              ? new Date(chat.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                              : ''
+                            return (
+                              <button
+                                key={chat.id}
+                                onClick={() => { handleViewChat(chat.id); setHistoryOpen(false) }}
+                                className="w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors hover:bg-white/5"
+                                style={{
+                                  background: isViewing ? 'rgba(99,102,241,0.15)' : 'transparent',
+                                  border: isViewing ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                                }}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                    style={{ background: chat.status === 'active' ? '#34d399' : '#4b5563' }}
+                                  />
+                                  <span className="text-gray-400 truncate flex-1">{chat.title || 'Untitled'}</span>
+                                </div>
+                                {date && <span className="text-gray-600 text-[10px] ml-3">{date}</span>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
@@ -389,7 +426,7 @@ export default function App() {
             style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}
           >
             <span className="text-indigo-400 text-xs">
-              Viewing past session — {pastChats.find(c => c.id === viewingChatId)?.title || 'Unknown'}
+              {pastChats.find(c => c.id === viewingChatId)?.title || 'Unknown'}
             </span>
             <button onClick={handleBackToLive} className="text-gray-500 hover:text-gray-300 text-xs ml-auto">
               Dismiss
